@@ -1,9 +1,10 @@
 /**
  * Convert Basketball Reference formats to DB-ready values.
+ * All functions return null on invalid input so database inserts never fail.
  */
 
 /**
- * "6-9" -> height in cm (feet * 30.48 + inches * 2.54)
+ * Height: "6-7" (feet-inches) -> centimeters.
  */
 export function heightToCm(heightStr) {
   if (!heightStr || typeof heightStr !== 'string') return null;
@@ -20,7 +21,7 @@ export function heightToCm(heightStr) {
 }
 
 /**
- * "250lb" or "250 lb" or "113kg" -> weight in kg
+ * Weight: pounds -> kilograms. Accepts "250lb", "250 lb", or "113kg".
  */
 export function weightToKg(weightStr) {
   if (!weightStr || typeof weightStr !== 'string') return null;
@@ -36,7 +37,7 @@ export function weightToKg(weightStr) {
 }
 
 /**
- * Parse "December 30, 1984" or "1984-12-30" -> Date or null
+ * Birth date: "December 30, 1984" or "1984-12-30" -> PostgreSQL date string (YYYY-MM-DD).
  */
 export function parseBirthDate(dateStr) {
   if (!dateStr || typeof dateStr !== 'string') return null;

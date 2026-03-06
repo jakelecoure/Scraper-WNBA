@@ -5,9 +5,13 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
+    "start": "node jobs/runPlayerWorkers.js",
     "generate-jobs": "node jobs/generatePlayerJobs.js",
     "workers": "node jobs/runPlayerWorkers.js",
     "migrate": "node db/migrate.js"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "keywords": ["nba", "scraper", "basketball-reference"],
   "license": "MIT",

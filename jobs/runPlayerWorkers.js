@@ -1,10 +1,10 @@
 /**
  * Worker: claim a pending job, scrape player, persist, mark complete/failed.
- * Run multiple processes with: npm run workers (each process is a worker).
+ * Run with: npm start (Railway) or npm run workers.
  */
 
 import 'dotenv/config';
-import { pool } from '../db/db.js';
+import { pool, testConnection } from '../db/db.js';
 import { scrapeAndPersistPlayer } from '../scrapers/playerSeasonScraper.js';
 
 const MAX_RETRIES = 3;
@@ -83,6 +83,9 @@ async function processOneJob() {
 }
 
 async function runWorker() {
+  console.log('Starting NBA scraper workers...');
+  await testConnection();
+  console.log('Worker pool initialized');
   console.log(`[Worker ${process.pid}] Started.`);
   while (true) {
     const hadJob = await processOneJob();
