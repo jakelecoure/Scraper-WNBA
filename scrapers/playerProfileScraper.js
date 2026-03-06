@@ -98,9 +98,18 @@ function parseSeasonRowsFromComments(rawHtml) {
   let match;
   while ((match = commentRegex.exec(rawHtml)) !== null) {
     const commentContent = match[1];
-    if (!commentContent.includes('per_game') && !commentContent.includes('data-stat="season"')) continue;
+    if (commentContent.length < 300) continue;
+    if (!commentContent.includes('season') && !commentContent.includes('pts_per_g') && !commentContent.includes('team_id') && !commentContent.includes('per_game')) continue;
     try {
       const $ = cheerio.load(commentContent);
+      const rows = parseSeasonRowsFromTable($);
+      if (rows.length > 0) return rows;
+    } catch (_) {}
+  }
+  const allPerGameMatch = rawHtml.match(/<div[^>]*id="all_per_game"[^>]*>\s*<!--\s*([\s\S]*?)-->/i);
+  if (allPerGameMatch) {
+    try {
+      const $ = cheerio.load(allPerGameMatch[1]);
       const rows = parseSeasonRowsFromTable($);
       if (rows.length > 0) return rows;
     } catch (_) {}
@@ -110,14 +119,37 @@ function parseSeasonRowsFromComments(rawHtml) {
 
 function parseSeasonRowsFromTable($) {
   const rows = [];
-  const $table = $('table#per_game');
-  if (!$table.length) return rows;
+  let $table = $('table#per_game').first();
+  if (!$table.length) {
+    $('table').each((_, table) => {
+      if (rows.length > 0) return;
+      const $t = $(table);
+      const hasSeason = $t.find('tbody tr th[data-stat="season"]').length + $t.find('tbody tr th[data-stat="Season"]').length;
+      const hasTeam = $t.find('tbody tr td[data-stat="team_id"]').length;
+      const hasPts = $t.find('tbody tr td[data-stat="pts_per_g"]').length;
+      if ((hasSeason || hasTeam) && (hasPts || hasTeam)) {
+        const r = extractSeasonRowsFromTable($, $t);
+        if (r.length > 0) rows.push(...r);
+      }
+    });
+    return rows;
+  }
+  const extracted = extractSeasonRowsFromTable($, $table);
+  rows.push(...extracted);
+  return rows;
+}
 
+function extractSeasonRowsFromTable($, $table) {
+  const rows = [];
   $table.find('tbody tr').each((_, tr) => {
     const $tr = $(tr);
     if ($tr.hasClass('thead')) return;
     const seasonCell = $tr.find('th[data-stat="season"]');
-    const season = (seasonCell.find('a').length ? seasonCell.find('a') : seasonCell).text().trim();
+    let season = (seasonCell.find('a').length ? seasonCell.find('a') : seasonCell).text().trim();
+    if (!season && $tr.find('th[data-stat="Season"]').length) {
+      const sc = $tr.find('th[data-stat="Season"]');
+      season = (sc.find('a').length ? sc.find('a') : sc).text().trim();
+    }
     if (!season || !/^\d{4}-\d{2}$/.test(season)) return;
     const teamAbbrev = $tr.find('td[data-stat="team_id"] a').text().trim()
       || $tr.find('td[data-stat="team_id"]').text().trim();
