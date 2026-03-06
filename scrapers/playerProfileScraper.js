@@ -8,6 +8,7 @@ import { withRateLimit } from '../utils/rateLimiter.js';
 import { retry } from '../utils/retry.js';
 import { heightToCm, weightToKg, parseBirthDate } from '../utils/conversions.js';
 import { srPlayerIdFromUrl } from './playerIndexScraper.js';
+import { getAbbrevByTeamName } from '../utils/teamMap.js';
 
 export async function fetchPlayerProfileHtml(url) {
   return withRateLimit(async () => {
@@ -139,6 +140,52 @@ function parseSeasonRowsFromTable($) {
   return rows;
 }
 
+/**
+ * Parse jersey numbers from div.uni_holder links (data-tip: "Team Name, Year(s)").
+ * Returns only NBA teams. Year can be "2010" or "2015-2018".
+ */
+function parseJerseyNumbers($) {
+  const entries = [];
+  $('div.uni_holder a[href*="numbers.cgi?number="]').each((_, el) => {
+    const $a = $(el);
+    const href = $a.attr('href') || '';
+    const numMatch = href.match(/number=(\d+)/);
+    const tip = ($a.attr('data-tip') || '').trim();
+    if (!numMatch || !tip) return;
+    const number = numMatch[1];
+    const commaIdx = tip.lastIndexOf(',');
+    if (commaIdx === -1) return;
+    const teamName = tip.slice(0, commaIdx).trim();
+    const yearPart = tip.slice(commaIdx + 1).trim();
+    if (!getAbbrevByTeamName(teamName)) return;
+    const yearRange = yearPart.match(/^(\d{4})-(\d{4})$/);
+    const yearSingle = yearPart.match(/^(\d{4})$/);
+    let yearStart, yearEnd;
+    if (yearRange) {
+      yearStart = parseInt(yearRange[1], 10);
+      yearEnd = parseInt(yearRange[2], 10);
+    } else if (yearSingle) {
+      yearStart = yearEnd = parseInt(yearSingle[1], 10);
+    } else return;
+    entries.push({ number, teamName, yearStart, yearEnd });
+  });
+  return entries;
+}
+
+function applyJerseyNumbersToSeasons(seasons, jerseys) {
+  for (const row of seasons) {
+    const abbrev = (row.team_abbrev || '').toUpperCase();
+    const yearStart = row.year_start;
+    for (const j of jerseys) {
+      if (getAbbrevByTeamName(j.teamName) !== abbrev) continue;
+      if (yearStart >= j.yearStart && yearStart <= j.yearEnd) {
+        row.jersey_number = j.number;
+        break;
+      }
+    }
+  }
+}
+
 function extractSeasonRowsFromTable($, $table) {
   const rows = [];
   $table.find('tbody tr').each((_, tr) => {
@@ -240,6 +287,8 @@ export async function scrapePlayerProfile(url) {
   if (seasons.length === 0) {
     seasons = parseSeasonRowsFromComments(html);
   }
+  const jerseys = parseJerseyNumbers($);
+  applyJerseyNumbersToSeasons(seasons, jerseys);
 
   return { sr_player_id: srPlayerId, profile, seasons, url };
 }

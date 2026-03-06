@@ -11,6 +11,7 @@ export async function getNbaLeagueId() {
   );
   if (r.rows.length > 0) {
     nbaLeagueId = r.rows[0].id;
+    await setNbaCountryUsa();
     return nbaLeagueId;
   }
   try {
@@ -19,6 +20,7 @@ export async function getNbaLeagueId() {
       [NBA_LEAGUE_NAME]
     );
     nbaLeagueId = r.rows[0].id;
+    await setNbaCountryUsa();
     return nbaLeagueId;
   } catch (err) {
     if (err.code === '23505') {
@@ -28,12 +30,23 @@ export async function getNbaLeagueId() {
       );
       if (r.rows.length > 0) {
         nbaLeagueId = r.rows[0].id;
+        await setNbaCountryUsa();
         return nbaLeagueId;
       }
     }
     throw err;
   }
 }
+
+async function setNbaCountryUsa() {
+  try {
+    await pool.query(
+      "UPDATE leagues SET country = 'USA' WHERE name = $1",
+      [NBA_LEAGUE_NAME]
+    );
+  } catch (_) {
+    // Ignore if leagues.country column does not exist
+  }
 
 export async function getOrCreateSeason(leagueId, yearStart, yearEnd) {
   const r = await pool.query(
