@@ -1,0 +1,191 @@
+/**
+ * Scrape a single player profile page and return profile data + season rows.
+ */
+
+import axios from 'axios';
+import * as cheerio from 'cheerio';
+import { withRateLimit } from '../utils/rateLimiter.js';
+import { retry } from '../utils/retry.js';
+import { heightToCm, weightToKg, parseBirthDate } from '../utils/conversions.js';
+import { srPlayerIdFromUrl } from './playerIndexScraper.js';
+
+export async function fetchPlayerProfileHtml(url) {
+  return withRateLimit(async () => {
+    return retry(async () => {
+      const res = await axios.get(url, {
+        timeout: 15000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; NBA-Scraper/1.0)',
+          'Accept': 'text/html',
+        },
+        validateStatus: (s) => s === 200 || s === 429 || s === 404,
+      });
+      if (res.status === 404) {
+        const err = new Error('Page not found (404)');
+        err.response = res;
+        err.status = 404;
+        throw err;
+      }
+      if (res.status === 429) {
+        const err = new Error('Rate limited (429)');
+        err.response = res;
+        throw err;
+      }
+      if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+      return res.data;
+    });
+  });
+}
+
+/**
+ * Parse profile section: name, birth date, birth place, height, weight, position, nationality.
+ */
+function parseProfile($) {
+  const fullName = $('h1[itemprop="name"]').first().text().trim()
+    || $('h1').first().text().trim()
+    || $('title').text().replace(/\s*\|\s*Basketball-Reference\.com.*$/i, '').trim()
+    || null;
+  const parts = fullName ? fullName.split(/\s+/) : [];
+  const first_name = parts.length ? parts[0] : null;
+  const last_name = parts.length > 1 ? parts.slice(1).join(' ') : null;
+
+  let birth_date = null;
+  let birth_place = null;
+  let height_cm = null;
+  let weight_kg = null;
+  let position = null;
+  let nationality = null;
+
+  const p = $('div#info').text() || $('div[itemtype="https://schema.org/Person"]').text() || $('body').text();
+  const heightMatch = p.match(/(\d-\d+)\s*,\s*(\d+)\s*lb\s*\((\d+)\s*cm\s*,\s*(\d+)\s*kg\)/i)
+    || p.match(/(\d-\d+)\s*,\s*(\d+)\s*lb/i);
+  if (heightMatch) {
+    height_cm = heightToCm(heightMatch[1]);
+    if (!height_cm && heightMatch[3]) height_cm = parseFloat(heightMatch[3]);
+    weight_kg = weightToKg(heightMatch[2] + 'lb') || (heightMatch[4] ? parseFloat(heightMatch[4]) : null);
+  }
+
+  const bornMatch = p.match(/Born:\s*([^▪]+?)(?:\s+in\s+([^▪]+?))?(?:\s+([a-z]{2})\s*$|$)/im);
+  if (bornMatch) {
+    birth_date = parseBirthDate(bornMatch[1].trim());
+    birth_place = bornMatch[2] ? bornMatch[2].trim() : null;
+    nationality = bornMatch[3] ? bornMatch[3].trim().toLowerCase() : null;
+  }
+
+  const posMatch = p.match(/Position:\s*([^▪]+)/i);
+  if (posMatch) position = posMatch[1].replace(/\s+/g, ' ').trim() || null;
+
+  return {
+    full_name: fullName,
+    first_name: first_name,
+    last_name: last_name,
+    birth_date,
+    birth_place,
+    height_cm,
+    weight_kg,
+    position,
+    nationality,
+  };
+}
+
+/**
+ * Parse per_game table (Regular Season only) into season rows.
+ * Each row: season "2003-04", team_id "CLE", pos, g, gs, mp, pts_per_g, trb_per_g, ast_per_g, stl_per_g, blk_per_g, fg_pct, fg3_pct, ft_pct
+ * We need totals: games, minutes, points, rebounds, assists, steals, blocks, fg_pct, three_pct, ft_pct
+ * Totals table is more accurate; if not present we use per_game * g for points, trb, ast, stl, blk and mp from totals or per_game*g.
+ */
+function parseSeasonRows($) {
+  const rows = [];
+  const $table = $('table#per_game');
+  if (!$table.length) return rows;
+
+  $table.find('tbody tr').each((_, tr) => {
+    const $tr = $(tr);
+    if ($tr.hasClass('thead')) return;
+    const seasonCell = $tr.find('th[data-stat="season"]');
+    const season = (seasonCell.find('a').length ? seasonCell.find('a') : seasonCell).text().trim();
+    if (!season || !/^\d{4}-\d{2}$/.test(season)) return;
+    const teamAbbrev = $tr.find('td[data-stat="team_id"] a').text().trim()
+      || $tr.find('td[data-stat="team_id"]').text().trim();
+    const lg = ($tr.find('td[data-stat="lg_id"]').text() || '').trim();
+    if (lg && lg !== 'NBA') return;
+
+    const g = parseCellNum($tr, 'g');
+    const gs = parseCellNum($tr, 'gs');
+    const mp = parseCellNum($tr, 'mp');
+    const ptsPerG = parseCellNum($tr, 'pts_per_g');
+    const trbPerG = parseCellNum($tr, 'trb_per_g');
+    const astPerG = parseCellNum($tr, 'ast_per_g');
+    const stlPerG = parseCellNum($tr, 'stl_per_g');
+    const blkPerG = parseCellNum($tr, 'blk_per_g');
+    const fgPct = parseCellPct($tr, 'fg_pct');
+    const fg3Pct = parseCellPct($tr, 'fg3_pct');
+    const ftPct = parseCellPct($tr, 'ft_pct');
+
+    const games = g;
+    const minutes = g != null && mp != null ? Math.round(g * mp * 100) / 100 : null;
+    const points = g != null && ptsPerG != null ? Math.round(g * ptsPerG) : null;
+    const rebounds = g != null && trbPerG != null ? Math.round(g * trbPerG * 100) / 100 : null;
+    const assists = g != null && astPerG != null ? Math.round(g * astPerG * 100) / 100 : null;
+    const steals = g != null && stlPerG != null ? Math.round(g * stlPerG * 100) / 100 : null;
+    const blocks = g != null && blkPerG != null ? Math.round(g * blkPerG * 100) / 100 : null;
+
+    const [yStart, yEnd] = season.split('-').map((x) => parseInt(x, 10));
+    const yearEnd = yEnd < 50 ? 2000 + yEnd : 1900 + yEnd;
+
+    rows.push({
+      seasonLabel: season,
+      year_start: yStart,
+      year_end: yearEnd,
+      team_abbrev: teamAbbrev || null,
+      jersey_number: null,
+      games_played: games,
+      stats: {
+        games,
+        minutes,
+        points,
+        rebounds,
+        assists,
+        steals,
+        blocks,
+        fg_pct: fgPct,
+        three_pct: fg3Pct,
+        ft_pct: ftPct,
+      },
+    });
+  });
+
+  return rows;
+}
+
+function parseCellNum($tr, dataStat) {
+  const v = $tr.find(`td[data-stat="${dataStat}"]`).text().trim();
+  if (v === '') return null;
+  const n = parseFloat(v);
+  return Number.isNaN(n) ? null : n;
+}
+
+function parseCellPct($tr, dataStat) {
+  const v = $tr.find(`td[data-stat="${dataStat}"]`).text().trim();
+  if (v === '') return null;
+  const n = parseFloat(v);
+  return Number.isNaN(n) ? null : n;
+}
+
+/**
+ * Fetch URL, parse HTML, return { sr_player_id, profile, seasons }.
+ */
+export async function scrapePlayerProfile(url) {
+  const srPlayerId = srPlayerIdFromUrl(url);
+  if (!srPlayerId) return { sr_player_id: null, profile: null, seasons: [], url };
+
+  const html = await fetchPlayerProfileHtml(url);
+  const $ = cheerio.load(html);
+
+  const profile = parseProfile($);
+  const seasons = parseSeasonRows($);
+
+  return { sr_player_id: srPlayerId, profile, seasons, url };
+}
+
+export default { fetchPlayerProfileHtml, scrapePlayerProfile, parseProfile, parseSeasonRows };
