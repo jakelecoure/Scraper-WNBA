@@ -1,6 +1,7 @@
 /**
- * Worker: claim a pending job, scrape player, persist, mark complete/failed.
+ * Worker: claim a pending job for this league, scrape player, persist, mark complete/failed.
  * Run with: npm start (Railway) or npm run workers.
+ * Set SCRAPER_LEAGUE=nba or SCRAPER_LEAGUE=gleague so this worker only processes that league's jobs.
  * Auto-detects schema: uses player_url or url for the URL column.
  */
 
@@ -11,28 +12,42 @@ import { scrapeAndPersistPlayer } from '../scrapers/playerSeasonScraper.js';
 const MAX_RETRIES = 3;
 const POLL_MS = 3000;
 
+const VALID_LEAGUES = ['nba', 'gleague'];
+
+function getScraperLeague() {
+  const raw = (process.env.SCRAPER_LEAGUE || '').toLowerCase().trim();
+  if (VALID_LEAGUES.includes(raw)) return raw;
+  console.error(`Invalid or missing SCRAPER_LEAGUE. Must be one of: ${VALID_LEAGUES.join(', ')}`);
+  process.exit(1);
+}
+
+const scraperLeague = getScraperLeague();
+
 let jobsTableValid = false;
 /** Column name for the player URL: 'player_url' or 'url' */
 let urlColumnName = 'player_url';
 
 async function checkJobsTableSchema() {
   try {
-    await pool.query('SELECT id, player_url FROM player_scrape_jobs LIMIT 1');
+    await pool.query('SELECT id, player_url, league FROM player_scrape_jobs LIMIT 1');
     urlColumnName = 'player_url';
     console.log('Using column: player_url');
     return true;
   } catch (err) {
     if (err.code === '42703') {
       try {
-        await pool.query('SELECT id, url FROM player_scrape_jobs LIMIT 1');
+        await pool.query('SELECT id, url, league FROM player_scrape_jobs LIMIT 1');
         urlColumnName = 'url';
         console.log('Using column: url');
         return true;
       } catch (e) {
-        console.error(
-          "Database table player_scrape_jobs needs either a 'player_url' or 'url' column."
-        );
-        return false;
+        if (e.code === '42703') {
+          console.error(
+            "Database table player_scrape_jobs needs 'league' and either 'player_url' or 'url'. Run the league migration."
+          );
+          return false;
+        }
+        throw e;
       }
     }
     if (err.code === '42P01') {
@@ -51,9 +66,11 @@ async function claimJob() {
       `SELECT id, ${urlColumnName}
        FROM player_scrape_jobs
        WHERE status = 'pending'
+       AND league = $1
        ORDER BY id
        LIMIT 1
-       FOR UPDATE SKIP LOCKED`
+       FOR UPDATE SKIP LOCKED`,
+      [scraperLeague]
     );
     const row = selectRes.rows[0];
     if (!row) return null;
@@ -168,19 +185,19 @@ async function processOneJob() {
 }
 
 async function runWorker() {
-  console.log('Starting G League scraper workers...');
+  console.log(`Starting scraper workers (league=${scraperLeague})...`);
   await testConnection();
   console.log('Connected to Railway Postgres');
   console.log('Worker pool initialized');
   jobsTableValid = await checkJobsTableSchema();
   if (!jobsTableValid) {
-    console.log('Worker will stay up. Add player_scrape_jobs table with a url or player_url column, then restart.');
+    console.log('Worker will stay up. Add player_scrape_jobs table with league and url/player_url, then restart.');
     while (true) {
       await new Promise((r) => setTimeout(r, 60000));
-      console.log('Waiting for player_scrape_jobs table (url or player_url column).');
+      console.log('Waiting for player_scrape_jobs table (league, url or player_url column).');
     }
   }
-  console.log(`[Worker ${process.pid}] Started.`);
+  console.log(`[Worker ${process.pid}] Started (league=${scraperLeague}).`);
   while (true) {
     const hadJob = await processOneJob();
     if (!hadJob) {

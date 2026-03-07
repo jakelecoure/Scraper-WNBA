@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS player_season_stats (
 CREATE TABLE IF NOT EXISTS player_scrape_jobs (
   id SERIAL PRIMARY KEY,
   url VARCHAR(500) NOT NULL UNIQUE,
+  league TEXT NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'pending',
   retry_count INTEGER NOT NULL DEFAULT 0,
   max_retries INTEGER NOT NULL DEFAULT 3,
@@ -97,6 +98,7 @@ CREATE TABLE IF NOT EXISTS player_scrape_jobs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_player_scrape_jobs_status ON player_scrape_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_player_scrape_jobs_status_league ON player_scrape_jobs (status, league) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS idx_players_sr_player_id ON players(sr_player_id);
 
 INSERT INTO leagues (name) VALUES ('G League') ON CONFLICT (name) DO NOTHING;
