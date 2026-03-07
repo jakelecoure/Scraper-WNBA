@@ -76,6 +76,10 @@ function parseProfile($) {
     const placeMatch = p.match(/Born:[\s\S]*?\s+in\s+([^▪\n]+?)(?:\s+[a-z]{2}\s*$|\n|▪)/im);
     if (placeMatch) birth_place = placeMatch[1].trim();
   }
+  if (!birth_date && /Born:[\s\S]*?([A-Za-z]+\s+\d{1,2},?\s*\d{4})/im.test(p)) {
+    const dateMatch = p.match(/Born:[\s\S]*?([A-Za-z]+\s+\d{1,2},?\s*\d{4})/im);
+    if (dateMatch) birth_date = parseBirthDate(dateMatch[1].replace(/\s+/g, ' ').trim());
+  }
 
   const posMatch = p.match(/Position:\s*([^▪]+)/i);
   if (posMatch) position = posMatch[1].replace(/\s+/g, ' ').trim() || null;
