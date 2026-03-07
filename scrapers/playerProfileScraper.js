@@ -72,6 +72,10 @@ function parseProfile($) {
     birth_place = bornMatch[2] ? bornMatch[2].trim() : null;
     nationality = bornMatch[3] ? bornMatch[3].trim().toLowerCase() : null;
   }
+  if (!birth_place && /Born:[\s\S]*?\s+in\s+([^▪\n]+?)(?:\s+[a-z]{2}\s*$|\n|▪)/im.test(p)) {
+    const placeMatch = p.match(/Born:[\s\S]*?\s+in\s+([^▪\n]+?)(?:\s+[a-z]{2}\s*$|\n|▪)/im);
+    if (placeMatch) birth_place = placeMatch[1].trim();
+  }
 
   const posMatch = p.match(/Position:\s*([^▪]+)/i);
   if (posMatch) position = posMatch[1].replace(/\s+/g, ' ').trim() || null;
