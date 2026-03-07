@@ -43,6 +43,12 @@ export async function upsertPlayerSeasonAndStats(playerId, teamSeasonId, jerseyN
 
   const gamesInt = games != null ? Math.round(Number(games)) : null;
   const minutesSafe = minutes != null && !Number.isNaN(Number(minutes)) ? Math.round(Number(minutes)) : null;
+  const roundNum = (v) => (v != null && !Number.isNaN(Number(v)) ? Math.round(Number(v)) : null);
+  const pointsInt = roundNum(points);
+  const reboundsInt = roundNum(rebounds);
+  const assistsInt = roundNum(assists);
+  const stealsInt = roundNum(steals);
+  const blocksInt = roundNum(blocks);
 
   const statRow = await pool.query(
     'SELECT id FROM player_season_stats WHERE player_season_id = $1',
@@ -58,11 +64,11 @@ export async function upsertPlayerSeasonAndStats(playerId, teamSeasonId, jerseyN
         playerSeasonId,
         gamesInt,
         minutesSafe ?? null,
-        points ?? null,
-        rebounds ?? null,
-        assists ?? null,
-        steals ?? null,
-        blocks ?? null,
+        pointsInt ?? null,
+        reboundsInt ?? null,
+        assistsInt ?? null,
+        stealsInt ?? null,
+        blocksInt ?? null,
         fg_pct ?? null,
         three_pct ?? null,
         ft_pct ?? null,
@@ -78,11 +84,11 @@ export async function upsertPlayerSeasonAndStats(playerId, teamSeasonId, jerseyN
         playerSeasonId,
         gamesInt,
         minutesSafe ?? null,
-        points ?? null,
-        rebounds ?? null,
-        assists ?? null,
-        steals ?? null,
-        blocks ?? null,
+        pointsInt ?? null,
+        reboundsInt ?? null,
+        assistsInt ?? null,
+        stealsInt ?? null,
+        blocksInt ?? null,
         fg_pct ?? null,
         three_pct ?? null,
         ft_pct ?? null,
