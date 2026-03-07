@@ -245,7 +245,7 @@ function extractSeasonRowsFromTable($, $table) {
     const stlTotal = parseCellNum($tr, 'stl');
     const blkTotal = parseCellNum($tr, 'blk');
 
-    const games = g;
+    const games = g != null ? Math.round(Number(g)) : null;
     const minutes = g != null && mp != null ? Math.round(g * mp * 100) / 100 : (parseCellNum($tr, 'mp') ?? null);
     const points = g != null && ptsPerG != null ? Math.round(g * ptsPerG) : (ptsTotal ?? null);
     const rebounds = g != null && trbPerG != null ? Math.round(g * trbPerG * 100) / 100 : (trbTotal ?? null);

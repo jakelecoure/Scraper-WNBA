@@ -4,8 +4,10 @@ import { pool } from '../db/db.js';
  * Get or create player_season and insert player_season_stats.
  * playerId, teamSeasonId, jerseyNumber, gamesPlayed come from caller.
  * stats: { games, minutes, points, rebounds, assists, steals, blocks, fg_pct, three_pct, ft_pct }
+ * Coerce games/games_played to integer so INTEGER columns never receive decimals.
  */
 export async function upsertPlayerSeasonAndStats(playerId, teamSeasonId, jerseyNumber, gamesPlayed, stats) {
+  const gamesPlayedInt = gamesPlayed != null ? Math.round(Number(gamesPlayed)) : null;
   let playerSeasonId;
   const r = await pool.query(
     `SELECT id FROM player_seasons WHERE player_id = $1 AND team_season_id = $2`,
@@ -15,13 +17,13 @@ export async function upsertPlayerSeasonAndStats(playerId, teamSeasonId, jerseyN
     playerSeasonId = r.rows[0].id;
     await pool.query(
       `UPDATE player_seasons SET jersey_number = $1, games_played = $2 WHERE id = $3`,
-      [jerseyNumber ?? null, gamesPlayed ?? null, playerSeasonId]
+      [jerseyNumber ?? null, gamesPlayedInt, playerSeasonId]
     );
   } else {
     const ins = await pool.query(
       `INSERT INTO player_seasons (player_id, team_season_id, jersey_number, games_played)
        VALUES ($1, $2, $3, $4) RETURNING id`,
-      [playerId, teamSeasonId, jerseyNumber ?? null, gamesPlayed ?? null]
+      [playerId, teamSeasonId, jerseyNumber ?? null, gamesPlayedInt]
     );
     playerSeasonId = ins.rows[0].id;
   }
@@ -39,6 +41,8 @@ export async function upsertPlayerSeasonAndStats(playerId, teamSeasonId, jerseyN
     ft_pct,
   } = stats || {};
 
+  const gamesInt = games != null ? Math.round(Number(games)) : null;
+
   const statRow = await pool.query(
     'SELECT id FROM player_season_stats WHERE player_season_id = $1',
     [playerSeasonId]
@@ -51,7 +55,7 @@ export async function upsertPlayerSeasonAndStats(playerId, teamSeasonId, jerseyN
        WHERE player_season_id = $1`,
       [
         playerSeasonId,
-        games ?? null,
+        gamesInt,
         minutes ?? null,
         points ?? null,
         rebounds ?? null,
@@ -71,7 +75,7 @@ export async function upsertPlayerSeasonAndStats(playerId, teamSeasonId, jerseyN
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
       [
         playerSeasonId,
-        games ?? null,
+        gamesInt,
         minutes ?? null,
         points ?? null,
         rebounds ?? null,
