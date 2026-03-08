@@ -1,26 +1,21 @@
 {
-  "name": "scraper-nba",
+  "name": "scraper-wnba",
   "version": "1.0.0",
-  "description": "Production-ready NBA scraper for Basketball Reference",
+  "description": "WNBA player scraper for Basketball-Reference to power HoopCentral database.",
   "main": "index.js",
-  "type": "module",
   "scripts": {
-    "start": "node jobs/runPlayerWorkers.js",
-    "generate-jobs": "node jobs/generatePlayerJobs.js",
-    "regenerate-jobs": "node jobs/regeneratePlayerJobs.js",
-    "workers": "node jobs/runPlayerWorkers.js",
-    "migrate": "node db/migrate.js",
-    "clear-players": "node db/clearPlayers.js"
+    "start": "node jobs/runPlayerWorkers.js"
   },
-  "engines": {
-    "node": ">=20"
-  },
-  "keywords": ["nba", "scraper", "basketball-reference"],
+  "keywords": [
+    "wnba",
+    "scraper",
+    "basketball-reference",
+    "hoopcentral"
+  ],
+  "author": "",
   "license": "MIT",
   "dependencies": {
-    "axios": "^1.6.2",
-    "cheerio": "^1.0.0-rc.12",
-    "dotenv": "^16.3.1",
-    "pg": "^8.11.3"
+    "axios": "^1.7.0",
+    "cheerio": "^1.0.0-rc.12"
   }
 }
