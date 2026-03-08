@@ -175,36 +175,110 @@ function extractBasicInfo($) {
   return info;
 }
 
-function extractSeasonStats($) {
-  const seasons = [];
-  const table = $('#per_game');
+function normalizeText(value) {
+  if (value == null) return '';
+  return String(value).replace(/\s+/g, ' ').trim();
+}
 
-  if (!table.length) {
-    return seasons;
+function extractTableRowData($, $row) {
+  const data = {};
+
+  // Basketball-Reference uses <th> for the row header (season) and <td> for stats.
+  $row.find('th[data-stat], td[data-stat]').each((_, cell) => {
+    const $cell = $(cell);
+    const key = $cell.attr('data-stat');
+    if (!key) return;
+    data[key] = normalizeText($cell.text());
+  });
+
+  return data;
+}
+
+function upsertSeason(map, season, team) {
+  const key = `${season}__${team || ''}`;
+  if (!map.has(key)) {
+    map.set(key, {
+      season,
+      team: team || '',
+      gp: '',
+      pts: '',
+      reb: '',
+      ast: '',
+      // Store complete table rows under this field so you get "all stats"
+      // without losing a simple top-level season object shape.
+      stats: {},
+    });
   }
+  return map.get(key);
+}
+
+function extractStatsTable($, tableSelector, tableKey) {
+  const rows = [];
+  const table = $(tableSelector);
+
+  if (!table.length) return rows;
 
   table.find('tbody tr').each((_, row) => {
     const $row = $(row);
-    const seasonText = $row.find('th[data-stat="season"]').text().trim();
 
-    if (!seasonText || seasonText.toLowerCase() === 'career') {
-      return;
-    }
+    // Skip header separator rows that are sometimes embedded in tbody.
+    if ($row.hasClass('thead')) return;
 
-    const team = $row.find('td[data-stat="team_id"]').text().trim();
-    const gp = $row.find('td[data-stat="g"]').text().trim();
-    const pts = $row.find('td[data-stat="pts_per_g"]').text().trim();
-    const reb = $row.find('td[data-stat="trb_per_g"]').text().trim();
-    const ast = $row.find('td[data-stat="ast_per_g"]').text().trim();
+    const rowData = extractTableRowData($, $row);
+    const season = normalizeText(rowData.season);
 
-    seasons.push({
-      season: seasonText,
+    if (!season || season.toLowerCase() === 'career') return;
+
+    // Many BR tables include a "Did Not Play" row (no team/stats); skip those.
+    const team = normalizeText(rowData.team_id || rowData.tm || rowData.team);
+    const hasAnyStatCell = Object.keys(rowData).some((k) => k !== 'season' && rowData[k] !== '');
+    if (!team && !hasAnyStatCell) return;
+
+    rows.push({
+      season,
       team,
-      gp,
-      pts,
-      reb,
-      ast,
+      tableKey,
+      rowData,
     });
+  });
+
+  return rows;
+}
+
+function extractSeasonStats($) {
+  // Regular-season tables on player pages. We merge by (season, team).
+  // This typically covers all WNBA seasons (1997–present) for that player.
+  const tablesToExtract = [
+    { selector: '#per_game', key: 'per_game' },
+    { selector: '#totals', key: 'totals' },
+    { selector: '#advanced', key: 'advanced' },
+  ];
+
+  const seasonMap = new Map();
+
+  for (const t of tablesToExtract) {
+    const rows = extractStatsTable($, t.selector, t.key);
+
+    for (const r of rows) {
+      const seasonObj = upsertSeason(seasonMap, r.season, r.team);
+      seasonObj.stats[t.key] = r.rowData;
+
+      // Keep the previously-requested quick fields populated from per_game when present.
+      if (t.key === 'per_game') {
+        seasonObj.gp = normalizeText(r.rowData.g);
+        seasonObj.pts = normalizeText(r.rowData.pts_per_g);
+        seasonObj.reb = normalizeText(r.rowData.trb_per_g);
+        seasonObj.ast = normalizeText(r.rowData.ast_per_g);
+      }
+    }
+  }
+
+  const seasons = Array.from(seasonMap.values());
+  seasons.sort((a, b) => {
+    const ay = parseInt(a.season, 10);
+    const by = parseInt(b.season, 10);
+    if (Number.isFinite(ay) && Number.isFinite(by)) return ay - by;
+    return String(a.season).localeCompare(String(b.season));
   });
 
   return seasons;
