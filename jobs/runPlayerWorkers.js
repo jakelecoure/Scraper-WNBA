@@ -13,7 +13,8 @@ import { createRequire } from 'module';
 const VALID_LEAGUES = ['nba', 'gleague', 'wnba'];
 
 function getScraperLeague() {
-  const raw = (process.env.SCRAPER_LEAGUE || '').toLowerCase().trim();
+  // Default to wnba for this repo so Railway/deploys work without setting the env var
+  const raw = (process.env.SCRAPER_LEAGUE || 'wnba').toLowerCase().trim();
   if (VALID_LEAGUES.includes(raw)) return raw;
   console.error(`Invalid or missing SCRAPER_LEAGUE. Must be one of: ${VALID_LEAGUES.join(', ')}`);
   process.exit(1);
