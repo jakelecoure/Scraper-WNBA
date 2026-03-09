@@ -371,5 +371,6 @@ module.exports = {
   getAllPlayers,
   scrapePlayerStats,
   saveToJSON,
+  run,
 };
 
