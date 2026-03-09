@@ -11,25 +11,45 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Slower delays to avoid 429 rate limits from Basketball-Reference (2–5 s between requests)
 function getRandomDelay() {
-  const min = 500;
-  const max = 1000;
+  const min = 2000;
+  const max = 5000;
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+const MAX_FETCH_RETRIES = 3;
+const RATE_LIMIT_BACKOFF_MS = 45000; // wait 45 s on 429 before retry
+
 async function fetchPage(url) {
-  try {
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (compatible; HoopCentralScraper/1.0; +https://www.basketball-reference.com/wnba/players/)',
-      },
-    });
-    return response.data;
-  } catch (error) {
-    console.error(`Failed to fetch ${url}:`, error.message);
-    throw error;
+  let lastError;
+  for (let attempt = 1; attempt <= MAX_FETCH_RETRIES; attempt++) {
+    try {
+      const response = await axios.get(url, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        timeout: 30000,
+      });
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      const status = error.response && error.response.status;
+      const is429 = status === 429;
+      if (is429 && attempt < MAX_FETCH_RETRIES) {
+        console.warn(`Rate limited (429) for ${url}, waiting ${RATE_LIMIT_BACKOFF_MS / 1000}s before retry ${attempt + 1}/${MAX_FETCH_RETRIES}...`);
+        await delay(RATE_LIMIT_BACKOFF_MS);
+        continue;
+      }
+      console.error(`Failed to fetch ${url}:`, error.message);
+      throw error;
+    }
   }
+  console.error(`Failed to fetch ${url} after ${MAX_FETCH_RETRIES} attempts:`, lastError && lastError.message);
+  throw lastError;
 }
 
 async function getLetterPageUrls() {
