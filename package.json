@@ -3,8 +3,12 @@
   "version": "1.0.0",
   "description": "WNBA player scraper for Basketball-Reference to power HoopCentral database.",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "start": "node jobs/runPlayerWorkers.js"
+    "start": "node jobs/runPlayerWorkers.js",
+    "generate-jobs": "node jobs/generatePlayerJobs.js",
+    "regenerate-jobs": "node jobs/regeneratePlayerJobs.js",
+    "workers": "node jobs/runPlayerWorkers.js"
   },
   "keywords": [
     "wnba",
