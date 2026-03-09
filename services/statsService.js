@@ -55,13 +55,14 @@ export async function upsertPlayerSeasonAndStats(
   } = stats || {};
 
   const gamesInt = games != null ? Math.round(Number(games)) : null;
-  const minutesSafe = minutes != null && !Number.isNaN(Number(minutes)) ? Number(minutes) : null;
-  const roundNum = (v) => (v != null && !Number.isNaN(Number(v)) ? Math.round(Number(v) * 100) / 100 : null);
-  const pointsVal = points != null && !Number.isNaN(Number(points)) ? Number(points) : null;
-  const reboundsVal = roundNum(rebounds);
-  const assistsVal = roundNum(assists);
-  const stealsVal = roundNum(steals);
-  const blocksVal = roundNum(blocks);
+  // Coerce to integer so we never send decimals to INTEGER columns (production DB may use INTEGER for minutes/stats)
+  const toInt = (v) => (v != null && !Number.isNaN(Number(v)) ? Math.round(Number(v)) : null);
+  const minutesSafe = toInt(minutes);
+  const pointsVal = toInt(points);
+  const reboundsVal = toInt(rebounds);
+  const assistsVal = toInt(assists);
+  const stealsVal = toInt(steals);
+  const blocksVal = toInt(blocks);
 
   const statRow = await pool.query(
     'SELECT id FROM player_season_stats WHERE player_season_id = $1',
