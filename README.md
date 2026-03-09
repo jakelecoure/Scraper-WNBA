@@ -19,6 +19,12 @@ INSERT INTO leagues (name) VALUES ('WNBA') ON CONFLICT (name) DO NOTHING;
 
 Or from the repo: the same SQL is in `db/migrations/002_add_wnba_league.sql`. After this, the `leagues` table will include WNBA (and NBA if it was missing).
 
+### Verify WNBA players in the database
+
+- **Use the same Postgres the scraper uses:** In Railway, open the **Postgres** service that is linked to Scraper-WNBA (the one whose `DATABASE_URL` is set on the scraper). Use that service’s **Data** or **Query** tab.
+- Run: `SELECT id, sr_player_id, full_name, position FROM players WHERE sr_player_id LIKE '%w' ORDER BY id DESC LIMIT 20;`  
+  You should see WNBA players (IDs ending in `w`). If deploy logs show `Job N complete: xxx01w (k seasons) -> player_id=12345`, then `SELECT * FROM players WHERE id = 12345` in that same Postgres should return the row.
+
 ---
 
 # Scraper-NBA (shared worker layout)

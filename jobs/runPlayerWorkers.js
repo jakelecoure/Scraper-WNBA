@@ -170,7 +170,7 @@ async function main() {
     try {
       const result = await scrapeAndPersistPlayer(player_url, scraperLeague);
       if (result.ok) {
-        console.log(`[Worker ${process.pid}] Job ${jobId} complete: ${result.sr_player_id} (${result.seasons_count} seasons)`);
+        console.log(`[Worker ${process.pid}] Job ${jobId} complete: ${result.sr_player_id} (${result.seasons_count} seasons) -> player_id=${result.player_id}`);
         await markComplete(jobId);
       } else if (result.reason === 'not_found') {
         console.log(`[Worker ${process.pid}] Job ${jobId} skipped (missing page): ${player_url}`);
