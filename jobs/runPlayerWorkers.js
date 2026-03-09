@@ -191,8 +191,8 @@ async function main() {
   }
 
   console.log(`Starting scraper workers (league=${scraperLeague})...`);
-  await testConnection();
-  console.log('Connected to Railway Postgres');
+  const { testConnectionWithRetry } = await import('../db/db.js');
+  await testConnectionWithRetry();
   console.log('Worker pool initialized');
   jobsTableValid = await checkJobsTableSchema();
   if (!jobsTableValid) {

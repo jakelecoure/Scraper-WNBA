@@ -45,7 +45,9 @@ export async function scrapeAndPersistPlayer(url, league = 'gleague') {
     for (const row of seasons) {
       try {
         const seasonId = await getOrCreateSeason(leagueId, row.year_start, row.year_end);
-        const teamId = await getOrCreateTeam(leagueId, row.team_abbrev);
+        // Use placeholder so we don't skip rows when team is missing (e.g. "TOT" or empty on BR)
+        const teamAbbrev = (row.team_abbrev && row.team_abbrev.trim()) ? row.team_abbrev.trim() : 'TOT';
+        const teamId = await getOrCreateTeam(leagueId, teamAbbrev);
         if (!teamId) continue;
         const teamSeasonId = await getOrCreateTeamSeason(teamId, seasonId);
         await upsertPlayerSeasonAndStats(

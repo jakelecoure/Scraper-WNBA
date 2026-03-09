@@ -249,7 +249,13 @@ function extractSeasonRowsFromTable($, $table, league) {
       const yc = $tr.find('th[data-stat="year_id"]');
       season = (yc.find('a').length ? yc.find('a') : yc).text().trim();
     }
-    if (!season || !/^\d{4}-\d{2}$/.test(season)) return;
+    // Accept "2009-10" or "2009" (single year, common on some BR pages)
+    if (!season) return;
+    const seasonMatch = season.match(/^(\d{4})-(\d{2})$/) || season.match(/^(\d{4})$/);
+    if (!seasonMatch) return;
+    const yStart = parseInt(seasonMatch[1], 10);
+    const yEnd = seasonMatch[2] != null ? (parseInt(seasonMatch[2], 10) < 50 ? 2000 + parseInt(seasonMatch[2], 10) : 1900 + parseInt(seasonMatch[2], 10)) : yStart + 1;
+    const seasonLabel = seasonMatch[2] != null ? season : `${yStart}-${String(yEnd).slice(-2)}`;
     const teamAbbrev = $tr.find('td[data-stat="team_id"] a').text().trim()
       || $tr.find('td[data-stat="team_id"]').text().trim()
       || $tr.find('td[data-stat="team_name_abbr"] a').text().trim()
@@ -285,13 +291,10 @@ function extractSeasonRowsFromTable($, $table, league) {
     const steals = g != null && stlPerG != null ? Math.round(g * stlPerG * 100) / 100 : (stlTotal ?? null);
     const blocks = g != null && blkPerG != null ? Math.round(g * blkPerG * 100) / 100 : (blkTotal ?? null);
 
-    const [yStart, yEnd] = season.split('-').map((x) => parseInt(x, 10));
-    const yearEnd = yEnd < 50 ? 2000 + yEnd : 1900 + yEnd;
-
     rows.push({
-      seasonLabel: season,
+      seasonLabel,
       year_start: yStart,
-      year_end: yearEnd,
+      year_end: yEnd,
       team_abbrev: teamAbbrev || null,
       jersey_number: null,
       games_played: games,
