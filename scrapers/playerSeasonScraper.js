@@ -4,15 +4,15 @@
  */
 
 import { insertPlayer } from '../services/playerService.js';
-import { getGLeagueId, getOrCreateSeason } from '../services/seasonService.js';
+import { getGLeagueId, getLeagueId, getOrCreateSeason } from '../services/seasonService.js';
 import { getOrCreateTeam, getOrCreateTeamSeason } from '../services/teamService.js';
 import { upsertPlayerSeasonAndStats } from '../services/statsService.js';
 import { scrapePlayerProfile } from './playerProfileScraper.js';
 
-export async function scrapeAndPersistPlayer(url) {
+export async function scrapeAndPersistPlayer(url, league = 'gleague') {
   let result;
   try {
-    result = await scrapePlayerProfile(url);
+    result = await scrapePlayerProfile(url, league);
   } catch (err) {
     console.error('[scraper] scrapePlayerProfile error:', err.message);
     throw err;
@@ -35,8 +35,13 @@ export async function scrapeAndPersistPlayer(url) {
     return { ok: false, reason: 'insert_returned_null', url };
   }
 
+  const leagueId = await getLeagueId(league);
+  if (!leagueId) {
+    console.warn(`[scraper] No league id for league=${league}, skipping seasons`);
+    return { ok: true, player_id: playerId, sr_player_id, seasons_count: 0 };
+  }
+
   try {
-    const leagueId = await getGLeagueId();
     for (const row of seasons) {
       try {
         const seasonId = await getOrCreateSeason(leagueId, row.year_start, row.year_end);

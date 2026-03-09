@@ -3,7 +3,33 @@ import { pool } from '../db/db.js';
 const G_LEAGUE_NAME = 'G League';
 let gLeagueId = null;
 
-export async function getGLeagueId() {
+const LEAGUE_NAME_MAP = {
+  wnba: 'WNBA',
+  nba: 'NBA',
+  gleague: 'G League',
+};
+
+/** Get league id by scraper league key (wnba, nba, gleague). Creates league if missing. */
+export async function getLeagueId(leagueKey) {
+  const name = LEAGUE_NAME_MAP[(leagueKey || '').toLowerCase()];
+  if (!name) return null;
+  if (name === G_LEAGUE_NAME) return getGLeagueId();
+  const r = await pool.query('SELECT id FROM leagues WHERE name = $1', [name]);
+  if (r.rows.length > 0) return r.rows[0].id;
+  try {
+    const ins = await pool.query(
+      'INSERT INTO leagues (name) VALUES ($1) RETURNING id',
+      [name]
+    );
+    return ins.rows[0].id;
+  } catch (err) {
+    if (err.code === '23505') {
+      const again = await pool.query('SELECT id FROM leagues WHERE name = $1', [name]);
+      if (again.rows.length > 0) return again.rows[0].id;
+    }
+    throw err;
+  }
+}
   if (gLeagueId) return gLeagueId;
   let r = await pool.query(
     'SELECT id FROM leagues WHERE name = $1',
@@ -62,4 +88,4 @@ export async function getOrCreateSeason(leagueId, yearStart, yearEnd) {
   return ins.rows[0].id;
 }
 
-export default { getGLeagueId, getOrCreateSeason };
+export default { getGLeagueId, getLeagueId, getOrCreateSeason };

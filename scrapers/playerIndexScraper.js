@@ -78,12 +78,84 @@ export async function fetchPlayerUrlsFromIndex() {
   return Array.from(allUrls);
 }
 
+const WNBA_BASE = 'https://www.basketball-reference.com';
+const WNBA_INDEX = `${WNBA_BASE}/wnba/players/`;
+
 /**
- * Extract sr_player_id from URL like .../players/j/jamesle01.html or .../players/--/xyz01.html
+ * Fetch all WNBA player profile URLs from Basketball Reference WNBA index.
+ * Uses /wnba/players/ then each letter page /wnba/players/a/, etc.
  */
-export function srPlayerIdFromUrl(url) {
-  const match = url.match(/\/players\/[^/]+\/([a-z0-9]+)\.html$/i);
-  return match ? match[1].toLowerCase() : null;
+export async function fetchWnbaPlayerUrlsFromIndex() {
+  const allUrls = new Set();
+  const html = await withRateLimit(async () => {
+    return retry(async () => {
+      const res = await axios.get(WNBA_INDEX, {
+        timeout: 20000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; WNBA-Scraper/1.0)',
+          'Accept': 'text/html',
+        },
+        validateStatus: (s) => s === 200 || s === 429,
+      });
+      if (res.status === 429) {
+        const err = new Error('Rate limited (429)');
+        err.response = res;
+        throw err;
+      }
+      return res.data;
+    });
+  });
+  const $ = cheerio.load(html);
+  const letterUrls = [];
+  $('a[href^="/wnba/players/"]').each((_, el) => {
+    const href = $(el).attr('href');
+    if (href && /^\/wnba\/players\/[a-z]\/$/i.test(href.trim())) {
+      letterUrls.push(`${WNBA_BASE}${href.trim()}`);
+    }
+  });
+  if (letterUrls.length === 0) letterUrls.push(WNBA_INDEX);
+  letterUrls.sort();
+
+  for (const letterUrl of letterUrls) {
+    await withRateLimit(async () => {
+      const pageHtml = await retry(async () => {
+        const res = await axios.get(letterUrl, {
+          timeout: 20000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; WNBA-Scraper/1.0)',
+            'Accept': 'text/html',
+          },
+          validateStatus: (s) => s === 200 || s === 429,
+        });
+        if (res.status === 429) {
+          const err = new Error('Rate limited (429)');
+          err.response = res;
+          throw err;
+        }
+        return res.data;
+      });
+      const $page = cheerio.load(pageHtml);
+      $page('a[href^="/wnba/players/"]').each((_, el) => {
+        const href = $page(el).attr('href');
+        if (href && href.endsWith('.html')) {
+          const full = href.startsWith('http') ? href : `${WNBA_BASE}${href.startsWith('/') ? '' : '/'}${href}`;
+          allUrls.add(full);
+        }
+      });
+    });
+  }
+
+  return Array.from(allUrls);
 }
 
-export default { fetchPlayerUrlsFromIndex, srPlayerIdFromUrl };
+/**
+ * Extract sr_player_id from URL like .../players/j/jamesle01.html or .../wnba/players/w/whitake01.html
+ */
+export function srPlayerIdFromUrl(url) {
+  const nbaMatch = url.match(/\/players\/[^/]+\/([a-z0-9]+)\.html$/i);
+  if (nbaMatch) return nbaMatch[1].toLowerCase();
+  const wnbaMatch = url.match(/\/wnba\/players\/[^/]+\/([a-z0-9]+)\.html$/i);
+  return wnbaMatch ? wnbaMatch[1].toLowerCase() : null;
+}
+
+export default { fetchPlayerUrlsFromIndex, fetchWnbaPlayerUrlsFromIndex, srPlayerIdFromUrl };

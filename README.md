@@ -1,6 +1,6 @@
 # Scraper-WNBA
 
-WNBA (and optionally NBA/G-League) scraper for [Basketball Reference](https://www.basketball-reference.com). Scrapes player data; WNBA mode writes to `data/wnba_players.json`; NBA/G-League use Postgres and a job queue.
+WNBA (and optionally NBA/G-League) scraper for [Basketball Reference](https://www.basketball-reference.com). All leagues use the **same job queue and Postgres**: workers claim jobs by `SCRAPER_LEAGUE`, scrape the player, and persist to the database (players, seasons, teams, stats).
 
 ## Railway (WNBA)
 
@@ -41,19 +41,21 @@ npm run migrate
 
 ## Usage
 
-1. **Generate jobs** – Fetch all player URLs from Basketball Reference and enqueue them:
+1. **Generate jobs** – Fetch all player URLs for the chosen league and enqueue them. Uses `SCRAPER_LEAGUE` (default `wnba`; use `nba` or `gleague` for NBA/G-League):
 
    ```bash
    npm run generate-jobs
+   # Or for NBA: SCRAPER_LEAGUE=nba npm run generate-jobs
    ```
 
-   To **clear the queue and refill with the full index** (~5,400 players), use:
+   To **clear this league's queue and refill** from the index:
 
    ```bash
    npm run regenerate-jobs
+   # Or: SCRAPER_LEAGUE=nba npm run regenerate-jobs
    ```
 
-   Use `regenerate-jobs` after a fresh deploy or if team rosters in Hoop Central look incomplete (only ~800 players instead of thousands).
+   Use `regenerate-jobs` after a fresh deploy or if rosters look incomplete.
 
 2. **Run workers** – Process the queue (run in one or more terminals for parallel workers):
 
@@ -97,12 +99,12 @@ jobs/         # generatePlayerJobs, runPlayerWorkers
 |--------------------------|------------------------------------------------------------|
 | `npm run migrate`        | Apply schema (creates tables if missing)                   |
 | `npm run generate-jobs` | Enqueue all player URLs from index (skips existing URLs)   |
-| `npm run regenerate-jobs` | Clear job queue and enqueue full index (~5,400 players)  |
+| `npm run regenerate-jobs` | Clear this league's jobs and enqueue full index (uses SCRAPER_LEAGUE) |
 | `npm run workers`       | Run a single worker (run multiple for concurrency)        |
 
 ## Railway: player_scrape_jobs schema
 
-The scraper expects `player_scrape_jobs` to have: **id**, **player_url**, **status**, **attempts**, **last_error**, **created_at**, **updated_at**. It does not modify the database; it only reads and writes using this structure.
+The scraper expects `player_scrape_jobs` to have: **id**, **url** (or **player_url**), **league**, **status**, and retry/error columns. Workers only claim jobs where `league = SCRAPER_LEAGUE`.
 
 1. **Run the full migration** (creates all tables): connect to your Railway Postgres and run the SQL in `db/schema.sql`, or run `npm run migrate` locally with `DATABASE_URL` set to your Railway Postgres URL.
 2. **Create/fix only the jobs table**: run the SQL in `db/fix-player-scrape-jobs.sql` against your Railway Postgres (Option A creates the table; Option B adds missing columns to an existing table).

@@ -1,14 +1,11 @@
 /**
- * Worker: claim a pending job for this league, scrape player, persist, mark complete/failed.
+ * Worker: claim a pending job for this league, scrape player, persist to Postgres, mark complete/failed.
  * Run with: npm start (Railway) or npm run workers.
  * Set SCRAPER_LEAGUE=nba, SCRAPER_LEAGUE=gleague, or SCRAPER_LEAGUE=wnba.
- * For wnba: runs the standalone WNBA scraper (index.js) and exits.
- * For nba/gleague: uses Postgres job queue and worker loop.
- * Auto-detects schema: uses player_url or url for the URL column.
+ * All leagues use the same job queue and worker loop; jobs are filtered by league.
  */
 
 import 'dotenv/config';
-import { createRequire } from 'module';
 
 // Log immediately so deploy logs show this repo's code is running (not scraper-nba)
 console.log('[Scraper-WNBA] runPlayerWorkers.js — leagues: nba, gleague, wnba (default: wnba)');
@@ -25,21 +22,7 @@ function getScraperLeague() {
 
 const scraperLeague = getScraperLeague();
 
-/** When SCRAPER_LEAGUE=wnba, run the standalone WNBA scraper and exit. */
-async function runWnbaScraper() {
-  const require = createRequire(import.meta.url);
-  const { run } = require('../index.js');
-  await run();
-}
-
 async function main() {
-  if (scraperLeague === 'wnba') {
-    console.log('SCRAPER_LEAGUE=wnba — running standalone WNBA scraper.');
-    await runWnbaScraper();
-    process.exit(0);
-    return;
-  }
-
   const { pool, testConnection } = await import('../db/db.js');
   const { scrapeAndPersistPlayer } = await import('../scrapers/playerSeasonScraper.js');
 
@@ -185,7 +168,7 @@ async function main() {
     console.log(`[Worker ${process.pid}] Job ${jobId}: ${player_url}`);
 
     try {
-      const result = await scrapeAndPersistPlayer(player_url);
+      const result = await scrapeAndPersistPlayer(player_url, scraperLeague);
       if (result.ok) {
         console.log(`[Worker ${process.pid}] Job ${jobId} complete: ${result.sr_player_id} (${result.seasons_count} seasons)`);
         await markComplete(jobId);

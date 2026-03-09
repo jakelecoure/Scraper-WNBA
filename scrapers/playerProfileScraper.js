@@ -104,12 +104,12 @@ function parseProfile($) {
  * We try the known "Per Game" wrapper first, then only accept results from other comments
  * when at least one row has games_played > 1 (so we don't use a wrong table with g=1).
  */
-function parseSeasonRowsFromComments(rawHtml) {
+function parseSeasonRowsFromComments(rawHtml, league) {
   const tryComment = (commentContent) => {
     if (!commentContent || commentContent.length < 300) return [];
     try {
       const $ = cheerio.load(commentContent);
-      const rows = parseSeasonRowsFromTable($);
+      const rows = parseSeasonRowsFromTable($, league);
       const hasFullSeasons = rows.some((r) => (r.games_played || 0) > 1);
       if (rows.length > 0 && hasFullSeasons) return rows;
       return [];
@@ -142,7 +142,7 @@ function parseSeasonRowsFromComments(rawHtml) {
   return [];
 }
 
-function parseSeasonRowsFromTable($) {
+function parseSeasonRowsFromTable($, league) {
   const rows = [];
   let $table = $('table#per_game').first();
   if (!$table.length) $table = $('table#per_game_stats').first();
@@ -154,13 +154,13 @@ function parseSeasonRowsFromTable($) {
       const hasTeam = $t.find('tbody tr td[data-stat="team_id"]').length + $t.find('tbody tr td[data-stat="team_name_abbr"]').length;
       const hasPts = $t.find('tbody tr td[data-stat="pts_per_g"]').length;
       if ((hasSeason || hasTeam) && (hasPts || hasTeam)) {
-        const r = extractSeasonRowsFromTable($, $t);
+        const r = extractSeasonRowsFromTable($, $t, league);
         if (r.length > 0) rows.push(...r);
       }
     });
     return rows;
   }
-  const extracted = extractSeasonRowsFromTable($, $table);
+  const extracted = extractSeasonRowsFromTable($, $table, league);
   rows.push(...extracted);
   return rows;
 }
@@ -211,7 +211,7 @@ function applyJerseyNumbersToSeasons(seasons, jerseys) {
   }
 }
 
-function extractSeasonRowsFromTable($, $table) {
+function extractSeasonRowsFromTable($, $table, league) {
   const rows = [];
   $table.find('tbody tr').each((_, tr) => {
     const $tr = $(tr);
@@ -232,6 +232,7 @@ function extractSeasonRowsFromTable($, $table) {
       || $tr.find('td[data-stat="team_name_abbr"] a').text().trim()
       || $tr.find('td[data-stat="team_name_abbr"]').text().trim();
     const lg = ($tr.find('td[data-stat="lg_id"]').text() || $tr.find('td[data-stat="comp_name_abbr"]').text() || '').trim();
+    // Skip NBA rows when we are persisting G-League (keep G-League rows). For WNBA we keep WNBA rows (lg !== 'NBA').
     if (lg === 'NBA') return;
 
     const g = parseCellNum($tr, 'g') ?? parseCellNum($tr, 'games');
@@ -305,8 +306,10 @@ function parseCellPct($tr, dataStat) {
 
 /**
  * Fetch URL, parse HTML, return { sr_player_id, profile, seasons }.
+ * @param {string} url - Player profile URL (NBA or WNBA).
+ * @param {string} [league] - 'wnba' | 'nba' | 'gleague' for league-specific parsing (e.g. season filter).
  */
-export async function scrapePlayerProfile(url) {
+export async function scrapePlayerProfile(url, league) {
   const srPlayerId = srPlayerIdFromUrl(url);
   if (!srPlayerId) return { sr_player_id: null, profile: null, seasons: [], url };
 
@@ -314,9 +317,9 @@ export async function scrapePlayerProfile(url) {
   const $ = cheerio.load(html);
 
   const profile = parseProfile($);
-  let seasons = parseSeasonRowsFromTable($);
+  let seasons = parseSeasonRowsFromTable($, league);
   if (seasons.length === 0) {
-    seasons = parseSeasonRowsFromComments(html);
+    seasons = parseSeasonRowsFromComments(html, league);
   }
   const jerseys = parseJerseyNumbers($);
   applyJerseyNumbersToSeasons(seasons, jerseys);
