@@ -4,7 +4,8 @@
  */
 
 import { insertPlayer } from '../services/playerService.js';
-import { getLeagueId, getLeagueName } from '../services/seasonService.js';
+import { getLeagueId, getOrCreateSeason } from '../services/seasonService.js';
+import { getOrCreateTeam, getOrCreateTeamSeason } from '../services/teamService.js';
 import { upsertPlayerSeasonAndStats } from '../services/statsService.js';
 import { scrapePlayerProfile } from './playerProfileScraper.js';
 
@@ -40,18 +41,17 @@ export async function scrapeAndPersistPlayer(url, league = 'gleague') {
     return { ok: true, player_id: playerId, sr_player_id, seasons_count: 0 };
   }
 
-  const leagueName = getLeagueName(league) || 'WNBA';
-
   try {
     for (const row of seasons) {
       try {
-        const seasonLabel = row.seasonLabel || `${row.year_start}-${String(row.year_end).slice(-2)}`;
+        const seasonId = await getOrCreateSeason(leagueId, row.year_start, row.year_end);
         const teamAbbrev = (row.team_abbrev && row.team_abbrev.trim()) ? row.team_abbrev.trim() : 'TOT';
+        const teamId = await getOrCreateTeam(leagueId, teamAbbrev);
+        if (!teamId) continue;
+        const teamSeasonId = await getOrCreateTeamSeason(teamId, seasonId);
         await upsertPlayerSeasonAndStats(
           playerId,
-          seasonLabel,
-          teamAbbrev,
-          leagueName,
+          teamSeasonId,
           row.jersey_number,
           row.games_played,
           row.stats
