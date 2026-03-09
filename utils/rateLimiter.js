@@ -1,10 +1,11 @@
 /**
  * Rate limiter: enforces delay between requests and handles 429 with exponential backoff.
+ * Conservative settings to avoid Basketball-Reference 429s (same site for NBA and WNBA).
  */
 
-const MIN_DELAY_MS = 2000;
-const MAX_DELAY_MS = 4000;
-const BASE_BACKOFF_MS = 5000;
+const MIN_DELAY_MS = 3500;
+const MAX_DELAY_MS = 6000;
+const BASE_BACKOFF_MS = 30000;
 
 let lastRequestTime = 0;
 
