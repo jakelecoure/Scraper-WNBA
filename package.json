@@ -9,7 +9,8 @@
     "generate-jobs": "node jobs/generatePlayerJobs.js",
     "regenerate-jobs": "node jobs/regeneratePlayerJobs.js",
     "workers": "node jobs/runPlayerWorkers.js",
-    "fix-wnba-profiles": "node jobs/fixWnbaProfiles.js"
+    "fix-wnba-profiles": "node jobs/fixWnbaProfiles.js",
+    "clear-wnba-and-reset": "node jobs/clearWnbaAndReset.js"
   },
   "keywords": [
     "wnba",
