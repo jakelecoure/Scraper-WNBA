@@ -30,6 +30,8 @@ export async function getLeagueId(leagueKey) {
     throw err;
   }
 }
+
+export async function getGLeagueId() {
   if (gLeagueId) return gLeagueId;
   let r = await pool.query(
     'SELECT id FROM leagues WHERE name = $1',
