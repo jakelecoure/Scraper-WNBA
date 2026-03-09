@@ -38,7 +38,9 @@ async function clearWnbaAndReset() {
       );
       const delSeasons = await client.query(`DELETE FROM player_seasons WHERE player_id IN ${wnbaIds}`);
       console.log('Deleted player_seasons rows:', delSeasons.rowCount);
+      await client.query(`DELETE FROM player_seasons WHERE player_id IN ${wnbaIds}`);
       await client.query(`DELETE FROM player_external_ids WHERE player_id IN ${wnbaIds}`);
+      await client.query(`DELETE FROM player_seasons WHERE player_id IN ${wnbaIds}`);
       await client.query(`DELETE FROM players WHERE id IN ${wnbaIds}`);
       console.log(`Deleted ${playerCount} WNBA players (and their seasons/stats).`);
     }
