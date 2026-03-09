@@ -41,6 +41,9 @@ async function testOnePlayer() {
     console.log('First season:', seasons[0]);
     console.log('Last season:', seasons[seasons.length - 1]);
   }
+  if ((seasons?.length ?? 0) <= 4) {
+    throw new Error(`Expected more than 4 seasons for this player (got ${seasons?.length ?? 0}). Full-table parsing may be broken.`);
+  }
 
   console.log('\n=== 2. Persist to DB (same as NBA scraper) ===');
   const result = await scrapeAndPersistPlayer(TEST_URL, 'wnba');
@@ -68,6 +71,10 @@ async function testOnePlayer() {
     [sr_player_id]
   );
   console.log('player_seasons count:', seasonCount.rows[0].n);
+  const n = parseInt(seasonCount.rows[0].n, 10);
+  if (n <= 4) {
+    throw new Error(`Expected more than 4 player_seasons in DB (got ${n}). Full seasons not persisted.`);
+  }
 
   const statsSample = await pool.query(
     `SELECT ps.id, ps.games_played, pss.points, pss.rebounds, pss.assists, pss.fg_pct

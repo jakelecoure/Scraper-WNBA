@@ -1,6 +1,6 @@
 /**
  * Rate limiter: enforces delay between requests and handles 429 with exponential backoff.
- * Conservative settings to avoid Basketball-Reference 429s (same site for NBA and WNBA).
+ * Shared by NBA and WNBA; same limits for both (Basketball-Reference is one site).
  */
 
 const MIN_DELAY_MS = 3500;

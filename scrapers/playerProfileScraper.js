@@ -16,8 +16,9 @@ export async function fetchPlayerProfileHtml(url) {
       const res = await axios.get(url, {
         timeout: 15000,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; G-League-Scraper/1.0)',
-          'Accept': 'text/html',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml',
+          'Accept-Language': 'en-US,en;q=0.9',
         },
         validateStatus: (s) => s === 200 || s === 429 || s === 404,
       });
@@ -128,29 +129,34 @@ function parseProfile($) {
  * when at least one row has games_played > 1 (so we don't use a wrong table with g=1).
  */
 function parseSeasonRowsFromComments(rawHtml, league) {
-  const tryComment = (commentContent) => {
+  const tryComment = (commentContent, requireFullSeasons = false) => {
     if (!commentContent || commentContent.length < 300) return [];
     try {
       const $ = cheerio.load(commentContent);
       const rows = parseSeasonRowsFromTable($, league);
       const hasFullSeasons = rows.some((r) => (r.games_played || 0) > 1);
-      if (rows.length > 0 && hasFullSeasons) return rows;
-      return [];
+      if (rows.length === 0) return [];
+      if (requireFullSeasons && !hasFullSeasons) return [];
+      return rows;
     } catch (_) {
       return [];
     }
   };
 
+  // Known wrapper IDs: accept table even without hasFullSeasons so we get full career
+  // (BR often shows ~4 rows in visible table and full table in comment).
   const patterns = [
     /<div[^>]*id="all_per_game"[^>]*>\s*<!--\s*([\s\S]*?)-->/i,
     /<div[^>]*id="all_per_game_stats"[^>]*>\s*<!--\s*([\s\S]*?)-->/i,
     /<div[^>]*id="all_wnba_per_game"[^>]*>\s*<!--\s*([\s\S]*?)-->/i,
     /<div[^>]*id="all_wnba_per_game_stats"[^>]*>\s*<!--\s*([\s\S]*?)-->/i,
+    // Some pages use a single comment for the full table; match div that contains wnba + per_game
+    /<div[^>]*id="[^"]*wnba[^"]*per_game[^"]*"[^>]*>[\s\S]*?<!--\s*([\s\S]*?)-->/i,
   ];
   for (const re of patterns) {
     const m = rawHtml.match(re);
     if (m && m[1]) {
-      const rows = tryComment(m[1]);
+      const rows = tryComment(m[1], false);
       if (rows.length > 0) return rows;
     }
   }
@@ -161,7 +167,7 @@ function parseSeasonRowsFromComments(rawHtml, league) {
     const commentContent = match[1];
     if (commentContent.length < 300) continue;
     if (!commentContent.includes('season') && !commentContent.includes('pts_per_g') && !commentContent.includes('team_id') && !commentContent.includes('per_game') && !commentContent.includes('year_id') && !commentContent.includes('data-stat="tm"')) continue;
-    const rows = tryComment(commentContent);
+    const rows = tryComment(commentContent, true);
     if (rows.length > 0) return rows;
   }
   return [];

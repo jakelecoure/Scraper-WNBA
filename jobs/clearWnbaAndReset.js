@@ -59,6 +59,11 @@ async function clearWnbaAndReset() {
     } else throw e;
   }
 
+  const remaining = await pool.query(
+    `SELECT COUNT(*) AS n FROM players WHERE sr_player_id LIKE '%w' AND LENGTH(sr_player_id) >= 4`
+  );
+  console.log('WNBA players remaining in DB:', remaining.rows[0]?.n ?? 0);
+
   await pool.end();
   console.log('Done. Start the worker (npm start with SCRAPER_LEAGUE=wnba) to re-scrape.');
 }
