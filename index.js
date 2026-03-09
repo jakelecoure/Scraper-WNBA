@@ -2,6 +2,7 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const fs = require('fs');
 const path = require('path');
+const { Pool } = require('pg');
 
 const BASE_URL = 'https://www.basketball-reference.com';
 const WNBA_PLAYERS_INDEX = `${BASE_URL}/wnba/players/`;
@@ -338,7 +339,180 @@ async function saveToJSON(data) {
   console.log(`Saved ${data.length} players to ${OUTPUT_PATH}`);
 }
 
+// --- Postgres persistence (when DATABASE_URL is set) ---
+function parseBirthDate(str) {
+  if (!str || typeof str !== 'string') return null;
+  const trimmed = str.trim();
+  const m = trimmed.match(/(\w+)\s+(\d{1,2}),?\s+(\d{4})/);
+  if (m) {
+    const months = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
+    const month = months[m[1].toLowerCase()];
+    const day = parseInt(m[2], 10);
+    const year = parseInt(m[3], 10);
+    if (month && day >= 1 && day <= 31 && year > 1900) return new Date(year, month - 1, day);
+  }
+  return null;
+}
+
+function heightToCm(heightStr) {
+  if (!heightStr || typeof heightStr !== 'string') return null;
+  const m = heightStr.trim().match(/^(\d+)-(\d+)$/);
+  if (m) return Math.round((parseInt(m[1], 10) * 30.48 + parseInt(m[2], 10) * 2.54) * 100) / 100;
+  return null;
+}
+
+function weightToKg(weightStr) {
+  if (weightStr == null || weightStr === '') return null;
+  const n = parseFloat(String(weightStr).replace(/\D/g, ''));
+  return Number.isFinite(n) ? Math.round((n / 2.205) * 100) / 100 : null;
+}
+
+function srPlayerIdFromUrl(profileUrl) {
+  if (!profileUrl) return null;
+  const match = profileUrl.match(/\/([a-z0-9]+)\.html$/i);
+  return match ? match[1] : null;
+}
+
+function splitName(fullName) {
+  if (!fullName || typeof fullName !== 'string') return { first: null, last: null };
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 0) return { first: null, last: null };
+  if (parts.length === 1) return { first: parts[0], last: null };
+  return { first: parts[0], last: parts.slice(1).join(' ') };
+}
+
+async function getWnbaLeagueId(pool) {
+  const r = await pool.query("SELECT id FROM leagues WHERE name = 'WNBA' LIMIT 1");
+  if (r.rows.length > 0) return r.rows[0].id;
+  const ins = await pool.query("INSERT INTO leagues (name) VALUES ('WNBA') ON CONFLICT (name) DO NOTHING RETURNING id");
+  if (ins.rows.length > 0) return ins.rows[0].id;
+  const r2 = await pool.query("SELECT id FROM leagues WHERE name = 'WNBA' LIMIT 1");
+  return r2.rows[0].id;
+}
+
+async function getOrCreateSeason(pool, leagueId, year) {
+  const y = parseInt(String(year).replace(/\D/g, ''), 10);
+  if (!Number.isFinite(y)) return null;
+  let r = await pool.query('SELECT id FROM seasons WHERE league_id = $1 AND year_start = $2 LIMIT 1', [leagueId, y]);
+  if (r.rows.length > 0) return r.rows[0].id;
+  await pool.query('INSERT INTO seasons (league_id, year_start, year_end) VALUES ($1, $2, $2) ON CONFLICT (league_id, year_start) DO NOTHING', [leagueId, y, y]);
+  r = await pool.query('SELECT id FROM seasons WHERE league_id = $1 AND year_start = $2 LIMIT 1', [leagueId, y]);
+  return r.rows.length > 0 ? r.rows[0].id : null;
+}
+
+async function getOrCreateTeam(pool, leagueId, abbreviation) {
+  const abbr = (abbreviation || '').trim().toUpperCase().slice(0, 10) || 'UNK';
+  let r = await pool.query('SELECT id FROM teams WHERE league_id = $1 AND abbreviation = $2 LIMIT 1', [leagueId, abbr]);
+  if (r.rows.length > 0) return r.rows[0].id;
+  await pool.query(
+    'INSERT INTO teams (name, city, abbreviation, league_id) VALUES ($1, $2, $3, $4) ON CONFLICT (league_id, abbreviation) DO NOTHING',
+    [abbr, null, abbr, leagueId]
+  );
+  r = await pool.query('SELECT id FROM teams WHERE league_id = $1 AND abbreviation = $2 LIMIT 1', [leagueId, abbr]);
+  return r.rows.length > 0 ? r.rows[0].id : null;
+}
+
+async function getOrCreateTeamSeason(pool, teamId, seasonId) {
+  let r = await pool.query('SELECT id FROM team_seasons WHERE team_id = $1 AND season_id = $2 LIMIT 1', [teamId, seasonId]);
+  if (r.rows.length > 0) return r.rows[0].id;
+  await pool.query('INSERT INTO team_seasons (team_id, season_id) VALUES ($1, $2) ON CONFLICT (team_id, season_id) DO NOTHING', [teamId, seasonId]);
+  r = await pool.query('SELECT id FROM team_seasons WHERE team_id = $1 AND season_id = $2 LIMIT 1', [teamId, seasonId]);
+  return r.rows.length > 0 ? r.rows[0].id : null;
+}
+
+function num(v) {
+  if (v == null || v === '') return null;
+  const n = parseFloat(String(v).replace(/,/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+async function persistPlayerToPostgres(pool, player) {
+  const srPlayerId = srPlayerIdFromUrl(player.profile_url);
+  if (!srPlayerId) return;
+  const leagueId = await getWnbaLeagueId(pool);
+  const birthDate = parseBirthDate(player.birthdate);
+  const heightCm = heightToCm(player.height);
+  const weightKg = weightToKg(player.weight);
+  const { first: firstName, last: lastName } = splitName(player.name || '');
+
+  const fullName = (player.name || '').trim() || 'Unknown';
+  await pool.query(
+    `INSERT INTO players (sr_player_id, full_name, first_name, last_name, birth_date, height_cm, weight_kg, position)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (sr_player_id) DO UPDATE SET
+       full_name = EXCLUDED.full_name, first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name,
+       birth_date = EXCLUDED.birth_date, height_cm = EXCLUDED.height_cm, weight_kg = EXCLUDED.weight_kg, position = EXCLUDED.position`,
+    [srPlayerId, fullName, firstName, lastName, birthDate, heightCm, weightKg, (player.position || '').trim().slice(0, 50) || null]
+  );
+  const playerIdRes = await pool.query('SELECT id FROM players WHERE sr_player_id = $1 LIMIT 1', [srPlayerId]);
+  const playerId = playerIdRes.rows[0].id;
+
+  await pool.query(
+    `INSERT INTO player_external_ids (player_id, source, external_id) VALUES ($1, 'basketball_reference', $2) ON CONFLICT (player_id, source) DO NOTHING`,
+    [playerId, srPlayerId]
+  );
+
+  for (const s of player.seasons || []) {
+    const year = parseInt(String(s.season).replace(/\D/g, ''), 10);
+    if (!Number.isFinite(year)) continue;
+    const seasonId = await getOrCreateSeason(pool, leagueId, year);
+    const teamId = await getOrCreateTeam(pool, leagueId, s.team);
+    if (!seasonId || !teamId) continue;
+    const teamSeasonId = await getOrCreateTeamSeason(pool, teamId, seasonId);
+
+    const pgRes = await pool.query(
+      'SELECT id FROM player_seasons WHERE player_id = $1 AND team_season_id = $2 LIMIT 1',
+      [playerId, teamSeasonId]
+    );
+    let playerSeasonId;
+    if (pgRes.rows.length > 0) {
+      playerSeasonId = pgRes.rows[0].id;
+    } else {
+      const gp = num(s.gp) != null ? parseInt(String(s.gp), 10) : null;
+      const ins = await pool.query(
+        'INSERT INTO player_seasons (player_id, team_season_id, games_played) VALUES ($1, $2, $3) RETURNING id',
+        [playerId, teamSeasonId, Number.isFinite(gp) ? gp : null]
+      );
+      playerSeasonId = ins.rows[0].id;
+    }
+
+    const tot = (s.stats && s.stats.totals) || {};
+    const per = (s.stats && s.stats.per_game) || {};
+    const games = num(tot.g || per.g || s.gp);
+    const minutes = num(tot.mp || per.mp_per_g);
+    const points = num(tot.pts || per.pts_per_g);
+    const rebounds = num(tot.trb || per.trb_per_g);
+    const assists = num(tot.ast || per.ast_per_g);
+    const steals = num(tot.stl || per.stl_per_g);
+    const blocks = num(tot.blk || per.blk_per_g);
+    const fgPct = num(tot.fg_pct || per.fg_pct);
+    const threePct = num(tot.fg3_pct || per.fg3_pct);
+    const ftPct = num(tot.ft_pct || per.ft_pct);
+
+    await pool.query(
+      `INSERT INTO player_season_stats (player_season_id, games, minutes, points, rebounds, assists, steals, blocks, fg_pct, three_pct, ft_pct)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT (player_season_id) DO UPDATE SET
+         games = EXCLUDED.games, minutes = EXCLUDED.minutes, points = EXCLUDED.points, rebounds = EXCLUDED.rebounds,
+         assists = EXCLUDED.assists, steals = EXCLUDED.steals, blocks = EXCLUDED.blocks,
+         fg_pct = EXCLUDED.fg_pct, three_pct = EXCLUDED.three_pct, ft_pct = EXCLUDED.ft_pct`,
+      [playerSeasonId, games, minutes, points, rebounds, assists, steals, blocks, fgPct, threePct, ftPct]
+    );
+  }
+}
+
 async function run() {
+  const databaseUrl = process.env.DATABASE_URL;
+  let pool = null;
+  if (databaseUrl) {
+    pool = new Pool({
+      connectionString: databaseUrl,
+      ssl: databaseUrl.includes('rlwy.net') ? { rejectUnauthorized: false } : false,
+      max: 10,
+    });
+    console.log('DATABASE_URL set — WNBA data will be written to Postgres.');
+  }
+
   try {
     const playerIndex = await getAllPlayers();
     const results = [];
@@ -347,9 +521,9 @@ async function run() {
       const { name, profile_url } = player;
       console.log(`Scraping stats for: ${name} - ${profile_url}`);
 
+      let playerData;
       try {
-        const playerData = await scrapePlayerStats(profile_url);
-        // Ensure we keep original name/profile_url from index if basic info is missing.
+        playerData = await scrapePlayerStats(profile_url);
         results.push({
           name: playerData.name || name,
           profile_url: playerData.profile_url || profile_url,
@@ -362,7 +536,7 @@ async function run() {
         });
       } catch (err) {
         console.error(`Failed to fully scrape ${name}:`, err.message);
-        results.push({
+        playerData = {
           name,
           profile_url,
           height: '',
@@ -371,7 +545,16 @@ async function run() {
           birthdate: '',
           college: '',
           seasons: [],
-        });
+        };
+        results.push(playerData);
+      }
+
+      if (pool && playerData && playerData.profile_url) {
+        try {
+          await persistPlayerToPostgres(pool, playerData);
+        } catch (dbErr) {
+          console.error(`Postgres persist failed for ${name}:`, dbErr.message);
+        }
       }
 
       await delay(getRandomDelay());
@@ -380,6 +563,11 @@ async function run() {
     await saveToJSON(results);
   } catch (error) {
     console.error('Fatal error running WNBA scraper:', error.message);
+  } finally {
+    if (pool) {
+      await pool.end();
+      console.log('Postgres pool closed.');
+    }
   }
 }
 
