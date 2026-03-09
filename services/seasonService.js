@@ -9,6 +9,11 @@ const LEAGUE_NAME_MAP = {
   gleague: 'G League',
 };
 
+/** Get display name for league key (e.g. 'wnba' -> 'WNBA'). */
+export function getLeagueName(leagueKey) {
+  return LEAGUE_NAME_MAP[(leagueKey || '').toLowerCase()] || null;
+}
+
 /** Get league id by scraper league key (wnba, nba, gleague). Creates league if missing. */
 export async function getLeagueId(leagueKey) {
   const name = LEAGUE_NAME_MAP[(leagueKey || '').toLowerCase()];
@@ -90,4 +95,4 @@ export async function getOrCreateSeason(leagueId, yearStart, yearEnd) {
   return ins.rows[0].id;
 }
 
-export default { getGLeagueId, getLeagueId, getOrCreateSeason };
+export default { getGLeagueId, getLeagueId, getLeagueName, getOrCreateSeason };
