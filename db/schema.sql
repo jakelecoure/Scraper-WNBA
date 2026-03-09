@@ -101,4 +101,6 @@ CREATE INDEX IF NOT EXISTS idx_player_scrape_jobs_status ON player_scrape_jobs(s
 CREATE INDEX IF NOT EXISTS idx_player_scrape_jobs_status_league ON player_scrape_jobs (status, league) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS idx_players_sr_player_id ON players(sr_player_id);
 
+INSERT INTO leagues (name) VALUES ('NBA') ON CONFLICT (name) DO NOTHING;
 INSERT INTO leagues (name) VALUES ('G League') ON CONFLICT (name) DO NOTHING;
+INSERT INTO leagues (name) VALUES ('WNBA') ON CONFLICT (name) DO NOTHING;

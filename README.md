@@ -7,6 +7,17 @@ WNBA (and optionally NBA/G-League) scraper for [Basketball Reference](https://ww
 - **Service must use this repo.** If deploy logs show `scraper-nba@1.0.0` or the error `Must be one of: nba, gleague` (without **wnba**), Railway is running old/different code. Connect the service to **this** repo (Scraper-WNBA), trigger a **new deploy** from the latest `main`, and optionally set **`SCRAPER_LEAGUE=wnba`** (defaults to `wnba` if unset).
 - When the correct code runs, the first log line is: `[Scraper-WNBA] runPlayerWorkers.js — leagues: nba, gleague, wnba (default: wnba)`.
 
+### Add WNBA league to Postgres (Railway)
+
+If your Railway Postgres has no WNBA row in `leagues`, run this once (e.g. Railway → your Postgres service → **Data** or **Query**, then paste and run):
+
+```sql
+INSERT INTO leagues (name) VALUES ('NBA') ON CONFLICT (name) DO NOTHING;
+INSERT INTO leagues (name) VALUES ('WNBA') ON CONFLICT (name) DO NOTHING;
+```
+
+Or from the repo: the same SQL is in `db/migrations/002_add_wnba_league.sql`. After this, the `leagues` table will include WNBA (and NBA if it was missing).
+
 ---
 
 # Scraper-NBA (shared worker layout)
