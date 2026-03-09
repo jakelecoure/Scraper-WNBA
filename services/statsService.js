@@ -2,15 +2,15 @@ import { pool } from '../db/db.js';
 
 /**
  * Always create player_seasons row first, then insert/update player_season_stats.
- * Same pipeline as NBA: players.id → player_seasons.player_id → player_season_stats.player_season_id
+ * Uses only (player_id, team_season_id) — no season column. Same pipeline as NBA.
  *
- * 1. Insert or skip (ON CONFLICT DO NOTHING) into player_seasons (player_id, season, team_season_id, jersey_number, games_played)
- * 2. If no row returned, fetch existing: SELECT id FROM player_seasons WHERE player_id = $1 AND season = $2
- * 3. Use that player_seasons.id as player_season_id when inserting into player_season_stats
+ * 1. INSERT into player_seasons (player_id, team_season_id, jersey_number, games_played) ON CONFLICT DO NOTHING RETURNING id
+ * 2. If no row returned, SELECT id FROM player_seasons WHERE player_id = $1 AND team_season_id = $2
+ * 3. Use that id as player_season_id when inserting/updating player_season_stats
  *
  * @param {number} playerId - players.id
- * @param {string} season - e.g. "2023-24"
- * @param {number} teamSeasonId - team_seasons.id
+ * @param {string} _seasonLabel - unused; kept for API compatibility (e.g. "2023-24")
+ * @param {number} teamSeasonId - team_seasons.id (must exist)
  * @param {string|null} jerseyNumber
  * @param {number|null} gamesPlayed
  * @param {object} stats - { games, minutes, points, rebounds, assists, steals, blocks, fg_pct, three_pct, ft_pct }
@@ -18,64 +18,36 @@ import { pool } from '../db/db.js';
  */
 export async function upsertPlayerSeasonAndStats(
   playerId,
-  season,
+  _seasonLabel,
   teamSeasonId,
   jerseyNumber,
   gamesPlayed,
   stats
 ) {
   const gamesPlayedInt = gamesPlayed != null ? Math.round(Number(gamesPlayed)) : null;
-  const seasonVal = season != null ? String(season) : null;
-  if (!seasonVal) throw new Error('season is required');
+  if (teamSeasonId == null) throw new Error('team_season_id is required');
 
+  const res = await pool.query(
+    `INSERT INTO player_seasons (player_id, team_season_id, jersey_number, games_played)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (player_id, team_season_id) DO NOTHING
+     RETURNING id`,
+    [playerId, teamSeasonId, jerseyNumber ?? null, gamesPlayedInt]
+  );
   let playerSeasonId;
-
-  try {
-    const res = await pool.query(
-      `INSERT INTO player_seasons (player_id, season, team_season_id, jersey_number, games_played)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (player_id, season) DO NOTHING
-       RETURNING id`,
-      [playerId, seasonVal, teamSeasonId, jerseyNumber ?? null, gamesPlayedInt]
+  if (res.rows.length > 0) {
+    playerSeasonId = res.rows[0].id;
+  } else {
+    const existing = await pool.query(
+      `SELECT id FROM player_seasons WHERE player_id = $1 AND team_season_id = $2`,
+      [playerId, teamSeasonId]
     );
-    if (res.rows.length > 0) {
-      playerSeasonId = res.rows[0].id;
-    } else {
-      const existing = await pool.query(
-        `SELECT id FROM player_seasons WHERE player_id = $1 AND season = $2`,
-        [playerId, seasonVal]
-      );
-      if (existing.rows.length === 0) throw new Error(`player_seasons row not found for player_id=${playerId} season=${seasonVal}`);
-      playerSeasonId = existing.rows[0].id;
-      await pool.query(
-        `UPDATE player_seasons SET team_season_id = $1, jersey_number = $2, games_played = $3 WHERE id = $4`,
-        [teamSeasonId, jerseyNumber ?? null, gamesPlayedInt, playerSeasonId]
-      );
-    }
-  } catch (err) {
-    if (err.code === '42703' && err.message && err.message.includes('season')) {
-      const res = await pool.query(
-        `INSERT INTO player_seasons (player_id, team_season_id, jersey_number, games_played)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (player_id, team_season_id) DO NOTHING
-         RETURNING id`,
-        [playerId, teamSeasonId, jerseyNumber ?? null, gamesPlayedInt]
-      );
-      if (res.rows.length > 0) {
-        playerSeasonId = res.rows[0].id;
-      } else {
-        const existing = await pool.query(
-          `SELECT id FROM player_seasons WHERE player_id = $1 AND team_season_id = $2`,
-          [playerId, teamSeasonId]
-        );
-        if (existing.rows.length === 0) throw new Error(`player_seasons row not found for player_id=${playerId} team_season_id=${teamSeasonId}`);
-        playerSeasonId = existing.rows[0].id;
-        await pool.query(
-          `UPDATE player_seasons SET jersey_number = $1, games_played = $2 WHERE id = $3`,
-          [jerseyNumber ?? null, gamesPlayedInt, playerSeasonId]
-        );
-      }
-    } else throw err;
+    if (existing.rows.length === 0) throw new Error(`player_seasons row not found for player_id=${playerId} team_season_id=${teamSeasonId}`);
+    playerSeasonId = existing.rows[0].id;
+    await pool.query(
+      `UPDATE player_seasons SET jersey_number = $1, games_played = $2 WHERE id = $3`,
+      [jerseyNumber ?? null, gamesPlayedInt, playerSeasonId]
+    );
   }
 
   const {
