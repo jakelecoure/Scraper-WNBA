@@ -1,4 +1,15 @@
-# Scraper-NBA
+# Scraper-WNBA
+
+WNBA (and optionally NBA/G-League) scraper for [Basketball Reference](https://www.basketball-reference.com). Scrapes player data; WNBA mode writes to `data/wnba_players.json`; NBA/G-League use Postgres and a job queue.
+
+## Railway (WNBA)
+
+- **Service must use this repo.** If deploy logs show `scraper-nba@1.0.0` or the error `Must be one of: nba, gleague` (without **wnba**), Railway is running old/different code. Connect the service to **this** repo (Scraper-WNBA), trigger a **new deploy** from the latest `main`, and optionally set **`SCRAPER_LEAGUE=wnba`** (defaults to `wnba` if unset).
+- When the correct code runs, the first log line is: `[Scraper-WNBA] runPlayerWorkers.js — leagues: nba, gleague, wnba (default: wnba)`.
+
+---
+
+# Scraper-NBA (shared worker layout)
 
 Production-ready NBA scraper for [Basketball Reference](https://www.basketball-reference.com). Scrapes all NBA player data and stores it in PostgreSQL.
 

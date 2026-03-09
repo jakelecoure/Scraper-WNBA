@@ -10,6 +10,9 @@
 import 'dotenv/config';
 import { createRequire } from 'module';
 
+// Log immediately so deploy logs show this repo's code is running (not scraper-nba)
+console.log('[Scraper-WNBA] runPlayerWorkers.js — leagues: nba, gleague, wnba (default: wnba)');
+
 const VALID_LEAGUES = ['nba', 'gleague', 'wnba'];
 
 function getScraperLeague() {
