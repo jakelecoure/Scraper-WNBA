@@ -1,11 +1,12 @@
 /**
- * Orchestrate scraping a player and persisting to DB (player, external_id, player_seasons, player_season_stats).
- * Uses playerProfileScraper + seasonService, teamService, playerService, statsService.
+ * Orchestrate scraping a player and persisting to DB.
+ * Same flow as NBA scraper: players, player_seasons (player_id, season, team_id, league_id), player_season_stats.
+ * Uses existing tables only: players, player_seasons, player_season_stats, teams, seasons (via league_id).
  */
 
 import { insertPlayer } from '../services/playerService.js';
-import { getLeagueId, getOrCreateSeason } from '../services/seasonService.js';
-import { getOrCreateTeam, getOrCreateTeamSeason } from '../services/teamService.js';
+import { getLeagueId } from '../services/seasonService.js';
+import { getOrCreateTeam } from '../services/teamService.js';
 import { upsertPlayerSeasonAndStats } from '../services/statsService.js';
 import { scrapePlayerProfile } from './playerProfileScraper.js';
 
@@ -44,14 +45,15 @@ export async function scrapeAndPersistPlayer(url, league = 'gleague') {
   try {
     for (const row of seasons) {
       try {
-        const seasonId = await getOrCreateSeason(leagueId, row.year_start, row.year_end);
+        const seasonLabel = row.seasonLabel || `${row.year_start}-${String(row.year_end).slice(-2)}`;
         const teamAbbrev = (row.team_abbrev && row.team_abbrev.trim()) ? row.team_abbrev.trim() : 'TOT';
         const teamId = await getOrCreateTeam(leagueId, teamAbbrev);
         if (!teamId) continue;
-        const teamSeasonId = await getOrCreateTeamSeason(teamId, seasonId);
         await upsertPlayerSeasonAndStats(
           playerId,
-          teamSeasonId,
+          seasonLabel,
+          teamId,
+          leagueId,
           row.jersey_number,
           row.games_played,
           row.stats

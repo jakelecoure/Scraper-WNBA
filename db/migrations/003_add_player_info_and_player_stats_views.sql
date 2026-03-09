@@ -28,13 +28,12 @@ DROP VIEW IF EXISTS "Player info";
 CREATE VIEW "Player info" AS SELECT * FROM player_info;
 
 -- View: player_stats (season-level stats) — one row per player_season with stats
+-- Uses same schema as NBA: player_seasons (player_id, season, team_id, league_id)
 CREATE OR REPLACE VIEW player_stats AS
 SELECT
   p.id AS player_id,
   p.sr_player_id,
-  s.year_start,
-  s.year_end,
-  (s.year_end - 1)::text || '-' || substring(s.year_end::text, 3, 2) AS season,
+  ps.season,
   t.abbreviation AS team,
   l.name AS league,
   ps.games_played AS gp,
@@ -52,7 +51,5 @@ SELECT
 FROM players p
 JOIN player_seasons ps ON ps.player_id = p.id
 JOIN player_season_stats pss ON pss.player_season_id = ps.id
-JOIN team_seasons ts ON ts.id = ps.team_season_id
-JOIN seasons s ON s.id = ts.season_id
-JOIN teams t ON t.id = ts.team_id
-JOIN leagues l ON l.id = s.league_id;
+JOIN teams t ON t.id = ps.team_id
+JOIN leagues l ON l.id = ps.league_id;
