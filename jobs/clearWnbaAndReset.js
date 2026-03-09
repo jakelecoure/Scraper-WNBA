@@ -20,24 +20,43 @@ async function clearWnbaAndReset() {
   console.log('Connecting...');
   await pool.query('SELECT 1');
 
-  // Get WNBA player ids (sr_player_id ends with 'w')
-  const ids = await pool.query(
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const ids = await client.query(
+      `SELECT id FROM players WHERE sr_player_id LIKE '%w' AND LENGTH(sr_player_id) >= 4`
+    );
+    const playerIds = ids.rows.map((r) => r.id);
+    const playerCount = playerIds.length;
+    if (playerCount === 0) {
+      console.log('No WNBA players to delete.');
+    } else {
+      const wnbaIds = `(SELECT id FROM players WHERE sr_player_id LIKE '%w' AND LENGTH(sr_player_id) >= 4)`;
+      await client.query(
+        `DELETE FROM player_season_stats WHERE player_season_id IN (SELECT id FROM player_seasons WHERE player_id IN ${wnbaIds})`
+      );
+      const delSeasons = await client.query(`DELETE FROM player_seasons WHERE player_id IN ${wnbaIds}`);
+      console.log('Deleted player_seasons rows:', delSeasons.rowCount);
+      await client.query(`DELETE FROM player_external_ids WHERE player_id IN ${wnbaIds}`);
+      await client.query(`DELETE FROM players WHERE id IN ${wnbaIds}`);
+      console.log(`Deleted ${playerCount} WNBA players (and their seasons/stats).`);
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+
+  // Re-fetch count after commit (no transaction)
+  const ids2 = await pool.query(
     `SELECT id FROM players WHERE sr_player_id LIKE '%w' AND LENGTH(sr_player_id) >= 4`
   );
-  const playerIds = ids.rows.map((r) => r.id);
-  const playerCount = playerIds.length;
-  if (playerCount === 0) {
-    console.log('No WNBA players to delete.');
-  } else {
-    // Delete in order (in case CASCADE is not on the DB)
-    await pool.query(
-      `DELETE FROM player_season_stats WHERE player_season_id IN (SELECT id FROM player_seasons WHERE player_id = ANY($1::int[]))`,
-      [playerIds]
-    );
-    await pool.query(`DELETE FROM player_seasons WHERE player_id = ANY($1::int[])`, [playerIds]);
-    await pool.query(`DELETE FROM player_external_ids WHERE player_id = ANY($1::int[])`, [playerIds]);
-    await pool.query(`DELETE FROM players WHERE id = ANY($1::int[])`, [playerIds]);
-    console.log(`Deleted ${playerCount} WNBA players (and their seasons/stats).`);
+  const playerCount = ids2.rows.length;
+  if (playerCount > 0) {
+    console.warn(`Warning: ${playerCount} WNBA players still in DB (worker may have re-inserted). Run clear again.`);
   }
 
   // Reset WNBA jobs to pending
