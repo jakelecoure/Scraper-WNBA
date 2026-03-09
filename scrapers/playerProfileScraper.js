@@ -65,6 +65,21 @@ function parseProfile($) {
     if (!height_cm && heightMatch[3]) height_cm = parseFloat(heightMatch[3]);
     weight_kg = weightToKg(heightMatch[2] + 'lb') || (heightMatch[4] ? parseFloat(heightMatch[4]) : null);
   }
+  // WNBA / alternate format: "6-4 (193cm)" or "6-4 (193cm), 88kg" without "lb" in same phrase
+  if (height_cm == null) {
+    const altHeight = p.match(/(\d)-(\d+)\s*\((\d+)\s*cm\)/i) || p.match(/(\d-\d+)\s*\((\d+)\s*cm\)/i);
+    if (altHeight) {
+      if (altHeight[3]) height_cm = parseFloat(altHeight[3]); // cm value is reliable
+      if (height_cm == null && altHeight[1] !== undefined) {
+        const feetInch = altHeight[2] !== undefined ? `${altHeight[1]}-${altHeight[2]}` : altHeight[1];
+        height_cm = heightToCm(feetInch);
+      }
+    }
+  }
+  if (weight_kg == null && p.match(/(\d+)\s*kg/i)) {
+    const kgMatch = p.match(/(\d+(?:\.\d+)?)\s*kg/i);
+    if (kgMatch) weight_kg = parseFloat(kgMatch[1]);
+  }
 
   const bornMatch = p.match(/Born:\s*([^▪]+?)(?:\s+in\s+([^▪]+?))?(?:\s+([a-z]{2})\s*$|$)/im);
   if (bornMatch) {
@@ -81,8 +96,16 @@ function parseProfile($) {
     if (dateMatch) birth_date = parseBirthDate(dateMatch[1].replace(/\s+/g, ' ').trim());
   }
 
-  const posMatch = p.match(/Position:\s*([^▪]+)/i);
-  if (posMatch) position = posMatch[1].replace(/\s+/g, ' ').trim() || null;
+  const posMatch = p.match(/Position:\s*([^▪\n]+?)(?=\s*\d-\d+|\s*\d+\s*cm|Born:|College:|High School:|$|\n)/i)
+    || p.match(/Position:\s*([^▪]+)/i);
+  if (posMatch) {
+    let pos = posMatch[1].replace(/\s+/g, ' ').trim();
+    // Strip trailing height/weight/bio that was captured (e.g. "Center 6-4 (193cm) Born...")
+    pos = pos.replace(/\s*\d-\d+.*$/i, '').trim();
+    pos = pos.split(/\n/)[0].trim();
+    if (pos.length > 0 && pos.length < 80) position = pos || null;
+    else if (pos.length >= 80) position = null; // likely captured wrong content
+  }
 
   return {
     full_name: fullName,
