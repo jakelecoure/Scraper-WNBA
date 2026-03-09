@@ -13,14 +13,13 @@ import { scrapePlayerProfile } from '../scrapers/playerProfileScraper.js';
 const BASE = 'https://www.basketball-reference.com';
 
 async function getWnbaPlayerIds() {
+  // WNBA players: Basketball-Reference uses sr_player_id ending in 'w' (e.g. whitake01w)
   const r = await pool.query(
-    `SELECT DISTINCT p.id, p.sr_player_id, p.full_name, p.position
-     FROM players p
-     INNER JOIN player_seasons ps ON ps.player_id = p.id
-     INNER JOIN team_seasons ts ON ts.id = ps.team_season_id
-     INNER JOIN teams t ON t.id = ts.team_id
-     INNER JOIN leagues l ON l.id = t.league_id AND l.name = 'WNBA'
-     ORDER BY p.id`
+    `SELECT id, sr_player_id, full_name, position
+     FROM players
+     WHERE sr_player_id LIKE '%w'
+     AND LENGTH(sr_player_id) >= 4
+     ORDER BY id`
   );
   return r.rows;
 }
