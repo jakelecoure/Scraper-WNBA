@@ -144,6 +144,8 @@ function parseSeasonRowsFromComments(rawHtml, league) {
   const patterns = [
     /<div[^>]*id="all_per_game"[^>]*>\s*<!--\s*([\s\S]*?)-->/i,
     /<div[^>]*id="all_per_game_stats"[^>]*>\s*<!--\s*([\s\S]*?)-->/i,
+    /<div[^>]*id="all_wnba_per_game"[^>]*>\s*<!--\s*([\s\S]*?)-->/i,
+    /<div[^>]*id="all_wnba_per_game_stats"[^>]*>\s*<!--\s*([\s\S]*?)-->/i,
   ];
   for (const re of patterns) {
     const m = rawHtml.match(re);
@@ -158,7 +160,7 @@ function parseSeasonRowsFromComments(rawHtml, league) {
   while ((match = commentRegex.exec(rawHtml)) !== null) {
     const commentContent = match[1];
     if (commentContent.length < 300) continue;
-    if (!commentContent.includes('season') && !commentContent.includes('pts_per_g') && !commentContent.includes('team_id') && !commentContent.includes('per_game')) continue;
+    if (!commentContent.includes('season') && !commentContent.includes('pts_per_g') && !commentContent.includes('team_id') && !commentContent.includes('per_game') && !commentContent.includes('year_id') && !commentContent.includes('data-stat="tm"')) continue;
     const rows = tryComment(commentContent);
     if (rows.length > 0) return rows;
   }
@@ -169,6 +171,8 @@ function parseSeasonRowsFromTable($, league) {
   const rows = [];
   let $table = $('table#per_game').first();
   if (!$table.length) $table = $('table#per_game_stats').first();
+  if (!$table.length) $table = $('table#wnba_per_game').first();
+  if (!$table.length) $table = $('table#wnba_per_game_stats').first();
   if (!$table.length) {
     $('table').each((_, table) => {
       if (rows.length > 0) return;
@@ -259,7 +263,9 @@ function extractSeasonRowsFromTable($, $table, league) {
     const teamAbbrev = $tr.find('td[data-stat="team_id"] a').text().trim()
       || $tr.find('td[data-stat="team_id"]').text().trim()
       || $tr.find('td[data-stat="team_name_abbr"] a').text().trim()
-      || $tr.find('td[data-stat="team_name_abbr"]').text().trim();
+      || $tr.find('td[data-stat="team_name_abbr"]').text().trim()
+      || $tr.find('td[data-stat="tm"] a').text().trim()
+      || $tr.find('td[data-stat="tm"]').text().trim();
     const lg = ($tr.find('td[data-stat="lg_id"]').text() || $tr.find('td[data-stat="comp_name_abbr"]').text() || '').trim();
     // Skip NBA rows when we are persisting G-League (keep G-League rows). For WNBA we keep WNBA rows (lg !== 'NBA').
     if (lg === 'NBA') return;
@@ -343,9 +349,12 @@ export async function scrapePlayerProfile(url, league) {
   const $ = cheerio.load(html);
 
   const profile = parseProfile($);
+  // Try main doc first, then comments. Use whichever has MORE rows (BR often shows
+  // only ~4 rows in the visible table and puts the full table in a comment).
   let seasons = parseSeasonRowsFromTable($, league);
-  if (seasons.length === 0) {
-    seasons = parseSeasonRowsFromComments(html, league);
+  const fromComments = parseSeasonRowsFromComments(html, league);
+  if (fromComments.length > seasons.length) {
+    seasons = fromComments;
   }
   const jerseys = parseJerseyNumbers($);
   applyJerseyNumbersToSeasons(seasons, jerseys);
