@@ -266,18 +266,20 @@ function extractSeasonRowsFromTable($, $table, league) {
     const yStart = parseInt(seasonMatch[1], 10);
     const yEnd = seasonMatch[2] != null ? (parseInt(seasonMatch[2], 10) < 50 ? 2000 + parseInt(seasonMatch[2], 10) : 1900 + parseInt(seasonMatch[2], 10)) : yStart + 1;
     const seasonLabel = seasonMatch[2] != null ? season : `${yStart}-${String(yEnd).slice(-2)}`;
-    let teamAbbrev = $tr.find('td[data-stat="team_id"] a').text().trim()
-      || $tr.find('td[data-stat="team_id"]').text().trim()
-      || $tr.find('td[data-stat="team_name_abbr"] a').text().trim()
-      || $tr.find('td[data-stat="team_name_abbr"]').text().trim()
-      || $tr.find('td[data-stat="tm"] a').text().trim()
-      || $tr.find('td[data-stat="tm"]').text().trim()
-      || $tr.find('td[data-stat="team"] a').text().trim()
-      || $tr.find('td[data-stat="team"]').text().trim();
+    const $teamCell = $tr.find('td[data-stat="team_id"], td[data-stat="team_name_abbr"], td[data-stat="tm"], td[data-stat="team"]').first();
+    const teamHref = $teamCell.find('a').attr('href') || '';
+    const teamSlugMatch = teamHref.match(/\/wnba\/teams?\/([A-Za-z0-9]+)\//) || teamHref.match(/\/teams?\/([A-Za-z0-9]+)\//);
+    let teamAbbrev = teamSlugMatch ? teamSlugMatch[1].toUpperCase() : null;
     if (!teamAbbrev) {
-      const teamLink = $tr.find('td[data-stat="team_id"] a, td[data-stat="team_name_abbr"] a, td[data-stat="tm"] a, td[data-stat="team"] a').attr('href') || '';
-      const teamSlug = teamLink.match(/\/teams?\/([A-Za-z0-9]+)\//) || teamLink.match(/\/wnba\/teams?\/([A-Za-z0-9]+)\//);
-      if (teamSlug) teamAbbrev = teamSlug[1].toUpperCase();
+      teamAbbrev = $tr.find('td[data-stat="team_id"] a').text().trim()
+        || $tr.find('td[data-stat="team_id"]').text().trim()
+        || $tr.find('td[data-stat="team_name_abbr"] a').text().trim()
+        || $tr.find('td[data-stat="team_name_abbr"]').text().trim()
+        || $tr.find('td[data-stat="tm"] a').text().trim()
+        || $tr.find('td[data-stat="tm"]').text().trim()
+        || $tr.find('td[data-stat="team"] a').text().trim()
+        || $tr.find('td[data-stat="team"]').text().trim() || null;
+      if (teamAbbrev) teamAbbrev = teamAbbrev.toUpperCase();
     }
     const lg = ($tr.find('td[data-stat="lg_id"]').text() || $tr.find('td[data-stat="comp_name_abbr"]').text() || '').trim();
     // Skip NBA rows when we are persisting G-League (keep G-League rows). For WNBA we keep WNBA rows (lg !== 'NBA').

@@ -45,8 +45,12 @@ export async function scrapeAndPersistPlayer(url, league = 'gleague') {
   try {
     for (const row of seasons) {
       try {
-        const teamAbbrev = (row.team_abbrev && row.team_abbrev.trim()) ? row.team_abbrev.trim().toUpperCase() : '';
-        if (league === 'wnba' && (teamAbbrev === 'TOT' || teamAbbrev === '')) continue;
+        const raw = (row.team_abbrev && row.team_abbrev.trim()) ? row.team_abbrev.trim() : '';
+        const teamAbbrev = raw ? raw.toUpperCase() : '';
+        if (league === 'wnba' && teamAbbrev === 'TOT') continue;
+        if (league === 'wnba' && !teamAbbrev) {
+          console.warn(`[scraper] WNBA row missing team_abbrev, inserting with UNK:`, { sr_player_id, seasonLabel: row.seasonLabel, year_start: row.year_start });
+        }
         const abbrev = teamAbbrev || (league === 'wnba' ? 'UNK' : 'TOT');
         const seasonId = await getOrCreateSeason(leagueId, row.year_start, row.year_end);
         const teamId = await getOrCreateTeam(leagueId, abbrev);
