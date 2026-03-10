@@ -266,18 +266,24 @@ function extractSeasonRowsFromTable($, $table, league) {
     const yStart = parseInt(seasonMatch[1], 10);
     const yEnd = seasonMatch[2] != null ? (parseInt(seasonMatch[2], 10) < 50 ? 2000 + parseInt(seasonMatch[2], 10) : 1900 + parseInt(seasonMatch[2], 10)) : yStart + 1;
     const seasonLabel = seasonMatch[2] != null ? season : `${yStart}-${String(yEnd).slice(-2)}`;
-    const teamLink = $tr.find('td[data-stat="team_id"] a').attr('href') || $tr.find('[data-stat="team_id"] a').attr('href') || '';
     let teamAbbrev = null;
-    if (teamLink) {
-      const match = teamLink.match(/\/teams\/([A-Z]+)\//i);
+    const $teamLink = $tr.find('td[data-stat="team_id"] a, [data-stat="team_id"] a').first();
+    let teamLink = $teamLink.attr('href') || '';
+    if (!teamLink) {
+      $tr.find('a[href*="teams"]').each((_, el) => {
+        if (!teamAbbrev) {
+          const href = $(el).attr('href') || '';
+          const m = href.match(/\/teams\/([A-Za-z0-9]+)\//i) || href.match(/teams\/([A-Za-z0-9]+)\//i);
+          if (m) teamAbbrev = m[1].toUpperCase();
+        }
+      });
+    } else {
+      const match = teamLink.match(/\/teams\/([A-Za-z0-9]+)\//i) || teamLink.match(/teams\/([A-Za-z0-9]+)\//i);
       if (match) teamAbbrev = match[1].toUpperCase();
     }
     if (!teamAbbrev) {
-      teamAbbrev = $tr.find('td[data-stat="team_id"]').text().trim()
-        || $tr.find('td[data-stat="team_name_abbr"] a').text().trim()
-        || $tr.find('td[data-stat="tm"] a').text().trim()
-        || $tr.find('td[data-stat="team"] a').text().trim() || null;
-      if (teamAbbrev) teamAbbrev = teamAbbrev.toUpperCase();
+      const text = ($tr.find('td[data-stat="team_id"]').text() || $tr.find('td[data-stat="tm"]').text() || $tr.find('td[data-stat="team"]').text() || '').trim();
+      if (text && /^[A-Za-z]{2,5}$/.test(text)) teamAbbrev = text.toUpperCase();
     }
     const lg = ($tr.find('td[data-stat="lg_id"]').text() || $tr.find('td[data-stat="comp_name_abbr"]').text() || '').trim();
     // Skip NBA rows when we are persisting G-League (keep G-League rows). For WNBA we keep WNBA rows (lg !== 'NBA').
