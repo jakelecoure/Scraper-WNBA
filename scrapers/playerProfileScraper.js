@@ -166,7 +166,7 @@ function parseSeasonRowsFromComments(rawHtml, league) {
   while ((match = commentRegex.exec(rawHtml)) !== null) {
     const commentContent = match[1];
     if (commentContent.length < 300) continue;
-    if (!commentContent.includes('season') && !commentContent.includes('pts_per_g') && !commentContent.includes('team_id') && !commentContent.includes('per_game') && !commentContent.includes('year_id') && !commentContent.includes('data-stat="tm"')) continue;
+    if (!commentContent.includes('season') && !commentContent.includes('pts_per_g') && !commentContent.includes('team_id') && !commentContent.includes('per_game') && !commentContent.includes('year_id') && !commentContent.includes('data-stat="tm"') && !commentContent.includes('data-stat="team"')) continue;
     const rows = tryComment(commentContent, true);
     if (rows.length > 0) return rows;
   }
@@ -184,7 +184,7 @@ function parseSeasonRowsFromTable($, league) {
       if (rows.length > 0) return;
       const $t = $(table);
       const hasSeason = $t.find('tbody tr th[data-stat="season"]').length + $t.find('tbody tr th[data-stat="Season"]').length + $t.find('tbody tr th[data-stat="year_id"]').length;
-      const hasTeam = $t.find('tbody tr td[data-stat="team_id"]').length + $t.find('tbody tr td[data-stat="team_name_abbr"]').length;
+      const hasTeam = $t.find('tbody tr td[data-stat="team_id"]').length + $t.find('tbody tr td[data-stat="team_name_abbr"]').length + $t.find('tbody tr td[data-stat="team"]').length;
       const hasPts = $t.find('tbody tr td[data-stat="pts_per_g"]').length;
       if ((hasSeason || hasTeam) && (hasPts || hasTeam)) {
         const r = extractSeasonRowsFromTable($, $t, league);
@@ -266,12 +266,19 @@ function extractSeasonRowsFromTable($, $table, league) {
     const yStart = parseInt(seasonMatch[1], 10);
     const yEnd = seasonMatch[2] != null ? (parseInt(seasonMatch[2], 10) < 50 ? 2000 + parseInt(seasonMatch[2], 10) : 1900 + parseInt(seasonMatch[2], 10)) : yStart + 1;
     const seasonLabel = seasonMatch[2] != null ? season : `${yStart}-${String(yEnd).slice(-2)}`;
-    const teamAbbrev = $tr.find('td[data-stat="team_id"] a').text().trim()
+    let teamAbbrev = $tr.find('td[data-stat="team_id"] a').text().trim()
       || $tr.find('td[data-stat="team_id"]').text().trim()
       || $tr.find('td[data-stat="team_name_abbr"] a').text().trim()
       || $tr.find('td[data-stat="team_name_abbr"]').text().trim()
       || $tr.find('td[data-stat="tm"] a').text().trim()
-      || $tr.find('td[data-stat="tm"]').text().trim();
+      || $tr.find('td[data-stat="tm"]').text().trim()
+      || $tr.find('td[data-stat="team"] a').text().trim()
+      || $tr.find('td[data-stat="team"]').text().trim();
+    if (!teamAbbrev) {
+      const teamLink = $tr.find('td[data-stat="team_id"] a, td[data-stat="team_name_abbr"] a, td[data-stat="tm"] a, td[data-stat="team"] a').attr('href') || '';
+      const teamSlug = teamLink.match(/\/teams?\/([A-Za-z0-9]+)\//) || teamLink.match(/\/wnba\/teams?\/([A-Za-z0-9]+)\//);
+      if (teamSlug) teamAbbrev = teamSlug[1].toUpperCase();
+    }
     const lg = ($tr.find('td[data-stat="lg_id"]').text() || $tr.find('td[data-stat="comp_name_abbr"]').text() || '').trim();
     // Skip NBA rows when we are persisting G-League (keep G-League rows). For WNBA we keep WNBA rows (lg !== 'NBA').
     if (lg === 'NBA') return;

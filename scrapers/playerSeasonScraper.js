@@ -45,9 +45,11 @@ export async function scrapeAndPersistPlayer(url, league = 'gleague') {
   try {
     for (const row of seasons) {
       try {
+        const teamAbbrev = (row.team_abbrev && row.team_abbrev.trim()) ? row.team_abbrev.trim().toUpperCase() : '';
+        if (league === 'wnba' && (teamAbbrev === 'TOT' || teamAbbrev === '')) continue;
+        const abbrev = teamAbbrev || (league === 'wnba' ? 'UNK' : 'TOT');
         const seasonId = await getOrCreateSeason(leagueId, row.year_start, row.year_end);
-        const teamAbbrev = (row.team_abbrev && row.team_abbrev.trim()) ? row.team_abbrev.trim() : 'TOT';
-        const teamId = await getOrCreateTeam(leagueId, teamAbbrev);
+        const teamId = await getOrCreateTeam(leagueId, abbrev);
         if (!teamId) continue;
         const teamSeasonId = await getOrCreateTeamSeason(teamId, seasonId);
         const seasonLabel = row.seasonLabel || `${row.year_start}-${String(row.year_end).slice(-2)}`;
